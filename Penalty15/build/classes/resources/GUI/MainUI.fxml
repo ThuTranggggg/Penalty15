@@ -1,79 +1,243 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import javafx.geometry.Insets?>
+<?import javafx.geometry.*?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
-<BorderPane xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1"
-            fx:controller="client.GUI.MainController">
+<BorderPane xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="client.GUI.MainController"
+            style="-fx-font-family: 'Segoe UI'; -fx-background-color: #e0f2fe;">
+
+    <!-- TOP HEADER -->
     <top>
-        <MenuBar>
-            <Menu text="Menu">
-                <MenuItem text="Đăng xuất" onAction="#handleLogout"/>
-            </Menu>
-        </MenuBar>
+        <VBox style="-fx-background-color: #0284c7; 
+                     -fx-padding: 15 20; 
+                     -fx-spacing: 8;
+                     -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.25), 10, 0, 0, 4);">
+            
+            <HBox spacing="15" style="-fx-alignment: center-left;">
+                <Label text="⚽ PENALTY SHOOTOUT" 
+                       style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: white;
+                              -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 3, 0, 0, 1);"/>
+                <Separator orientation="VERTICAL" prefHeight="20" 
+                          style="-fx-background-color: rgba(255,255,255,0.4);"/>
+                <Label fx:id="currentUserLabel" 
+                       text="👤 Người chơi" 
+                       style="-fx-font-size: 14px; -fx-text-fill: white; -fx-font-weight: bold;"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Button fx:id="logoutButton"
+                       text="ĐĂNG XUẤT" 
+                       onAction="#handleLogout" 
+                       prefHeight="36"
+                       style="-fx-font-size: 12px; 
+                              -fx-padding: 8 20; 
+                              -fx-background-color: transparent;
+                              -fx-text-fill: #fbbf24;
+                              -fx-font-weight: bold;
+                              -fx-border-radius: 18;
+                              -fx-background-radius: 18;
+                              -fx-border-color: #fbbf24;
+                              -fx-border-width: 2.5;">
+                    <cursor><javafx.scene.Cursor fx:constant="HAND" /></cursor>
+                </Button>
+            </HBox>
+            
+            <Label fx:id="statusLabel" 
+                   text="📢 Sẵn sàng" 
+                   style="-fx-font-size: 11px; -fx-text-fill: white; -fx-font-style: italic;"/>
+        </VBox>
     </top>
+
+    <!-- CENTER TABPANE -->
     <center>
-        <TabPane>
-            <Tab text="Danh Sách Người Chơi">
-                <VBox spacing="10">
-                    <padding>
-                        <Insets top="10" right="10" bottom="10" left="10"/>
-                    </padding>
-                    <HBox spacing="10">
-                        <TextField fx:id="searchField" promptText="Tìm kiếm theo tên"/>
-                        <Button text="Lọc Online" onAction="#handleFilterOnline"/>
-                        <Button text="Tìm" onAction="#handleSearch"/>
+        <TabPane style="-fx-padding: 15; -fx-tab-min-width: 120; -fx-tab-min-height: 40; -fx-background-color: transparent;">
+            
+            <!-- TAB 1: DANH SÁCH NGƯỜI CHƠI -->
+            <Tab closable="false">
+                <graphic>
+                    <HBox spacing="6" style="-fx-alignment: center;">
+                        <Label text="👥" style="-fx-font-size: 14px;"/>
+                        <Label text="NGƯỜI CHƠI" 
+                               style="-fx-font-size: 12px; -fx-font-weight: bold;"/>
                     </HBox>
-                    <TableView fx:id="usersTable">
+                </graphic>
+                
+                <VBox spacing="12" style="-fx-padding: 15; -fx-background-color: white; 
+                                          -fx-background-radius: 15; -fx-border-radius: 15;
+                                          -fx-border-color: #e2e8f0; -fx-border-width: 2;
+                                          -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 12, 0.15, 0, 4);">
+                    
+                    <!-- Search Bar -->
+                    <HBox spacing="8" style="-fx-alignment: center-left; -fx-padding: 10; -fx-background-color: #f8fafc; -fx-border-radius: 12; -fx-background-radius: 12;">
+                        <Label text="🔍" style="-fx-font-size: 16px;"/>
+                        <TextField fx:id="searchField" 
+                                  promptText="Tìm kiếm người chơi..." 
+                                  HBox.hgrow="ALWAYS"
+                                  style="-fx-background-color: white; 
+                                         -fx-text-fill: #1e293b;
+                                         -fx-border-color: #0ea5e9; 
+                                         -fx-border-width: 2; 
+                                         -fx-border-radius: 20; 
+                                         -fx-background-radius: 20; 
+                                         -fx-padding: 8 16;
+                                         -fx-font-size: 12px;"/>
+                        <Button text="Tìm" 
+                               onAction="#handleSearch" 
+                               prefWidth="70"
+                               style="-fx-background-color: #0284c7; 
+                                      -fx-text-fill: white; 
+                                      -fx-font-weight: bold; 
+                                      -fx-border-radius: 18; 
+                                      -fx-background-radius: 18;
+                                      -fx-font-size: 12px;
+                                      -fx-padding: 8 16;">
+                            <cursor><javafx.scene.Cursor fx:constant="HAND" /></cursor>
+                        </Button>
+                        <Button text="Online" 
+                               onAction="#handleFilterOnline" 
+                               prefWidth="80"
+                               style="-fx-background-color: #0ea5e9; 
+                                      -fx-text-fill: white; 
+                                      -fx-font-weight: bold; 
+                                      -fx-border-radius: 18; 
+                                      -fx-background-radius: 18;
+                                      -fx-font-size: 12px;
+                                      -fx-padding: 8 16;">
+                            <cursor><javafx.scene.Cursor fx:constant="HAND" /></cursor>
+                        </Button>
+                    </HBox>
+
+                    <!-- Users Table -->
+                    <TableView fx:id="usersTable" 
+                              style="-fx-font-size: 13px; -fx-background-color: white;"
+                              prefHeight="600"
+                              VBox.vgrow="ALWAYS">
                         <columns>
-                            <TableColumn text="Tên" fx:id="nameColumn" prefWidth="150"/>
-                            <TableColumn text="Điểm" fx:id="pointsColumn" prefWidth="100"/>
-                            <TableColumn text="Trạng Thái" fx:id="statusColumn" prefWidth="100"/>
+                            <TableColumn text="👤 Tên Người Chơi" fx:id="nameColumn" prefWidth="350" minWidth="250"/>
+                            <TableColumn text="⭐ Điểm" fx:id="pointsColumn" prefWidth="120" minWidth="100"/>
+                            <TableColumn text="📡 Trạng Thái" fx:id="statusColumn" prefWidth="150" minWidth="120"/>
+                            <TableColumn text="🎮 Hành Động" fx:id="actionColumn" prefWidth="150" minWidth="130"/>
                         </columns>
+                        <columnResizePolicy>
+                            <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
+                        </columnResizePolicy>
                     </TableView>
+
+                    <!-- Info -->
+                    <Label text="💡 Nhấn nút 'Mời' để gửi yêu cầu đấu với người chơi" 
+                           style="-fx-font-size: 12px; 
+                                  -fx-text-fill: #0ea5e9; 
+                                  -fx-font-weight: bold;
+                                  -fx-padding: 10;
+                                  -fx-background-color: #f0f9ff;
+                                  -fx-border-radius: 8;
+                                  -fx-background-radius: 8;"/>
                 </VBox>
             </Tab>
-            <Tab text="Lịch Sử Đấu">
-                <VBox spacing="10">
-                    <padding>
-                        <Insets top="10" right="10" bottom="10" left="10"/>
-                    </padding>
-                    <!-- Sử dụng SplitPane để chia không gian giữa hai bảng -->
-                    <SplitPane orientation="VERTICAL">
-                        <TableView fx:id="matchesTable">
-                            <columns>
-                                <TableColumn text="Mã Trận" fx:id="matchIdColumn" prefWidth="80"/>
-                                <TableColumn text="Đối Thủ" fx:id="opponentColumn" prefWidth="150"/>
-                                <TableColumn text="Kết Quả" fx:id="matchResultColumn" prefWidth="80"/>
-                                <TableColumn text="Thời Gian" fx:id="matchTimeColumn" prefWidth="150"/>
-                            </columns>
-                        </TableView>
-                        <TableView fx:id="historyTable">
-                            <columns>
-                                <TableColumn text="Lượt" fx:id="roundColumn" prefWidth="80"/>
-                                <TableColumn text="Thời Gian" fx:id="timeColumn" prefWidth="150"/>
-                                <TableColumn text="Vai Trò" fx:id="roleColumn" prefWidth="100"/>
-                                <TableColumn text="Hướng" fx:id="directionColumn" prefWidth="100"/>
-                                <TableColumn text="Kết Quả" fx:id="historyResultColumn" prefWidth="80"/>
-                            </columns>
-                        </TableView>
-                    </SplitPane>
+
+            <!-- TAB 2: LỊCH SỬ ĐẤU -->
+            <Tab closable="false">
+                <graphic>
+                    <HBox spacing="8" style="-fx-alignment: center;">
+                        <Label text="🏆" style="-fx-font-size: 16px;"/>
+                        <Label text="LỊCH SỬ" 
+                               style="-fx-font-size: 13px; -fx-font-weight: bold;"/>
+                    </HBox>
+                </graphic>
+                
+                <VBox spacing="15" style="-fx-padding: 20; -fx-background-color: white; 
+                                          -fx-background-radius: 15; -fx-border-radius: 15;
+                                          -fx-border-color: #e2e8f0; -fx-border-width: 2;
+                                          -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 12, 0.15, 0, 4);">
+                    
+                    <!-- HBox chứa 2 bảng cạnh nhau -->
+                    <HBox spacing="20" VBox.vgrow="ALWAYS">
+                        <!-- Matches Section - Bên trái -->
+                        <VBox spacing="10" HBox.hgrow="ALWAYS">
+                            <Label text="📊 Các Trận Đấu" 
+                                   style="-fx-font-size: 15px; 
+                                          -fx-font-weight: bold; 
+                                          -fx-text-fill: #0284c7;"/>
+                            <TableView fx:id="matchesTable" 
+                                      style="-fx-font-size: 13px; -fx-background-color: white;"
+                                      prefHeight="600"
+                                      VBox.vgrow="ALWAYS">
+                                <columns>
+                                    <TableColumn text="#️⃣ ID" fx:id="matchIdColumn" prefWidth="80" minWidth="60"/>
+                                    <TableColumn text="👤 Đối Thủ" fx:id="opponentColumn" prefWidth="180" minWidth="140"/>
+                                    <TableColumn text="🏆 Kết Quả" fx:id="matchResultColumn" prefWidth="130" minWidth="100"/>
+                                    <TableColumn text="🕐 Thời Gian" fx:id="matchTimeColumn" prefWidth="200" minWidth="160"/>
+                                </columns>
+                                <columnResizePolicy>
+                                    <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
+                                </columnResizePolicy>
+                            </TableView>
+                        </VBox>
+
+                        <!-- History Section - Bên phải -->
+                        <VBox spacing="10" HBox.hgrow="ALWAYS">
+                            <Label text="🔍 Chi Tiết Lượt Sút" 
+                                   style="-fx-font-size: 15px; 
+                                          -fx-font-weight: bold; 
+                                          -fx-text-fill: #0284c7;"/>
+                            <TableView fx:id="historyTable" 
+                                      style="-fx-font-size: 13px; -fx-background-color: white;"
+                                      prefHeight="600"
+                                      VBox.vgrow="ALWAYS">
+                                <columns>
+                                    <TableColumn text="🔢 Lượt" fx:id="roundColumn" prefWidth="80" minWidth="60"/>
+                                    <TableColumn text="⚽ Vai Trò" fx:id="roleColumn" prefWidth="120" minWidth="100"/>
+                                    <TableColumn text="🎯 Hướng" fx:id="directionColumn" prefWidth="100" minWidth="80"/>
+                                    <TableColumn text="📊 Kết Quả" fx:id="historyResultColumn" prefWidth="130" minWidth="100"/>
+                                    <TableColumn text="🕐 Thời Gian" fx:id="timeColumn" prefWidth="200" minWidth="160"/>
+                                </columns>
+                                <columnResizePolicy>
+                                    <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
+                                </columnResizePolicy>
+                            </TableView>
+                        </VBox>
+                    </HBox>
                 </VBox>
             </Tab>
-            <Tab text="Bảng Xếp Hạng">
-                <VBox spacing="10">
-                    <padding>
-                        <Insets top="10" right="10" bottom="10" left="10"/>
-                    </padding>
-                    <TableView fx:id="leaderboardTable">
+
+            <!-- TAB 3: BẢNG XẾP HẠNG -->
+            <Tab closable="false">
+                <graphic>
+                    <HBox spacing="8" style="-fx-alignment: center;">
+                        <Label text="🏅" style="-fx-font-size: 16px;"/>
+                        <Label text="XẾP HẠNG" 
+                               style="-fx-font-size: 13px; -fx-font-weight: bold;"/>
+                    </HBox>
+                </graphic>
+                
+                <VBox spacing="20" style="-fx-padding: 30; -fx-alignment: top-center; -fx-background-color: white; 
+                                          -fx-background-radius: 15; -fx-border-radius: 15;
+                                          -fx-border-color: #e2e8f0; -fx-border-width: 2;
+                                          -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 12, 0.15, 0, 4);">
+                    
+                    <Label text="🌟 TOP PLAYERS" 
+                           style="-fx-font-size: 19px; 
+                                  -fx-font-weight: bold; 
+                                  -fx-text-fill: #0284c7;
+                                  -fx-alignment: center;"/>
+                    
+                    <!-- Leaderboard Table -->
+                    <TableView fx:id="leaderboardTable" 
+                              style="-fx-font-size: 14px; -fx-background-color: white;"
+                              prefHeight="600"
+                              VBox.vgrow="ALWAYS">
                         <columns>
-                            <TableColumn text="Tên" fx:id="lbNameColumn" prefWidth="150"/>
-                            <TableColumn text="Điểm" fx:id="lbPointsColumn" prefWidth="100"/>
+                            <TableColumn fx:id="lbRankColumn" text="🏆 Hạng" prefWidth="150" minWidth="120"/>
+                            <TableColumn fx:id="lbNameColumn" text="👤 Tên Người Chơi" prefWidth="350" minWidth="250"/>
+                            <TableColumn fx:id="lbPointsColumn" text="⭐ Điểm Số" prefWidth="180" minWidth="140"/>
                         </columns>
+                        <columnResizePolicy>
+                            <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
+                        </columnResizePolicy>
                     </TableView>
                 </VBox>
             </Tab>
         </TabPane>
     </center>
+
 </BorderPane>

@@ -1,0 +1,94 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║           PENALTY SHOOTOUT - Git Ignore File                 ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+# ═══════════════════════════════════════════════════════════════
+# BUILD OUTPUT DIRECTORIES
+# ═══════════════════════════════════════════════════════════════
+Penalty15/build/
+Penalty15/dist/
+Penalty15/nbbuild/
+Penalty15/nbdist/
+Penalty15/.nb-gradle/
+Penalty15/out/
+Penalty15/target/
+
+# ═══════════════════════════════════════════════════════════════
+# IDE-SPECIFIC FILES (NetBeans, IntelliJ IDEA, VS Code)
+# ═══════════════════════════════════════════════════════════════
+# NetBeans
+Penalty15/nbproject/private/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# ═══════════════════════════════════════════════════════════════
+# COMPILED CLASS FILES
+# ═══════════════════════════════════════════════════════════════
+*.class
+*.jar
+*.war
+*.ear
+
+# ═══════════════════════════════════════════════════════════════
+# BACKUP & TEMPORARY FILES
+# ═══════════════════════════════════════════════════════════════
+*~
+*.bak
+*.tmp
+*.temp
+*.swp
+*.swo
+*_old.*
+*_backup.*
+
+# ═══════════════════════════════════════════════════════════════
+# LOGS
+# ═══════════════════════════════════════════════════════════════
+*.log
+logs/
+
+# ═══════════════════════════════════════════════════════════════
+# OS-SPECIFIC FILES
+# ═══════════════════════════════════════════════════════════════
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+# ═══════════════════════════════════════════════════════════════
+# PROJECT-SPECIFIC
+# ═══════════════════════════════════════════════════════════════
+# JavaFX SDK (local copy - don't commit)
+Penalty15/lib/openjfx-*/
+
+# Database credentials (if stored in files)
+db_credentials.properties
+
+# IDEA specific
+/.idea/shelf/
+/.idea/workspace.xml
+/.idea/httpRequests/
+/.idea/dataSources/
+/.idea/dataSources.local.xml

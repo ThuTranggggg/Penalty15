@@ -34,6 +34,11 @@ public class LoginController {
         client.sendMessage(loginMessage);
     }
 
+    @FXML
+    private void handleRegister() throws IOException {
+        client.showRegisterUI();
+    }
+
     public void showError(String error) {
         Platform.runLater(() -> {
             errorLabel.setText(error);

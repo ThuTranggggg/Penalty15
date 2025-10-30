@@ -41,6 +41,36 @@ public class DatabaseManager {
         return new Pair<>(null, null);
     }
 
+    // Phương thức đăng ký tài khoản mới
+    public User registerUser(String username, String password) throws SQLException {
+        // Kiểm tra username đã tồn tại chưa
+        String checkQuery = "SELECT id FROM users WHERE username = ?";
+        PreparedStatement checkStmt = conn.prepareStatement(checkQuery);
+        checkStmt.setString(1, username);
+        ResultSet rs = checkStmt.executeQuery();
+        
+        if (rs.next()) {
+            // Username đã tồn tại
+            return null;
+        }
+        
+        // Tạo tài khoản mới
+        String insertQuery = "INSERT INTO users (username, password, points, status) VALUES (?, ?, 0, 'offline')";
+        PreparedStatement insertStmt = conn.prepareStatement(insertQuery, Statement.RETURN_GENERATED_KEYS);
+        insertStmt.setString(1, username);
+        insertStmt.setString(2, password); // Trong thực tế, nên mã hóa mật khẩu
+        insertStmt.executeUpdate();
+        
+        // Lấy ID của user vừa tạo
+        ResultSet generatedKeys = insertStmt.getGeneratedKeys();
+        if (generatedKeys.next()) {
+            int userId = generatedKeys.getInt(1);
+            return new User(userId, username, 0, "offline");
+        }
+        
+        return null;
+    }
+
     // Cập nhật trạng thái người dùng
     public void updateUserStatus(int userId, String status) throws SQLException {
         String query = "UPDATE users SET status = ? WHERE id = ?";

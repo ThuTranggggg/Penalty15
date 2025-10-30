@@ -50,18 +50,23 @@ public class ClientHandler implements Runnable {
                 }
             }
         } catch (IOException | ClassNotFoundException | SQLException e) {
-            System.out.println("Kết nối với " + (user != null ? user.getUsername() : "client") + " bị ngắt.");
+            System.out.println("⚠️ Kết nối với " + (user != null ? user.getUsername() : "client") + " bị ngắt: " + e.getMessage());
             isRunning = false; // Dừng vòng lặp
-            if (gameRoom != null) {
+            
+            // XỬ LÝ DISCONNECT TRONG GAME
+            if (gameRoom != null && user != null) {
+                System.out.println("🎮 Người chơi " + user.getUsername() + " đang trong game, xử lý disconnect...");
                 try {
                     gameRoom.handlePlayerDisconnect(this);
                 } catch (IOException | SQLException ex) {
+                    System.err.println("❌ Lỗi xử lý disconnect trong GameRoom: " + ex.getMessage());
                     ex.printStackTrace();
                 }
             }
         } finally {
             try {
                 if (user != null) {
+                    System.out.println("🔄 Cleanup cho user: " + user.getUsername());
                     dbManager.updateUserStatus(user.getId(), "offline");
                     server.broadcast(new Message("status_update", user.getUsername() + " đã offline."));
                     server.removeClient(this);
@@ -70,6 +75,7 @@ public class ClientHandler implements Runnable {
                     socket.close();
                 }
             } catch (IOException | SQLException e) {
+                System.err.println("❌ Lỗi cleanup: " + e.getMessage());
                 e.printStackTrace();
             }
         }
@@ -79,6 +85,9 @@ public class ClientHandler implements Runnable {
         switch (message.getType()) {
             case "login":
                 handleLogin(message);
+                break;
+            case "register":
+                handleRegister(message);
                 break;
             case "get_users":
                 handleGetUsers();
@@ -195,6 +204,41 @@ public class ClientHandler implements Runnable {
         }
     }
 
+    private void handleRegister(Message message) throws IOException, SQLException {
+        String[] credentials = (String[]) message.getContent();
+        String username = credentials[0];
+        String password = credentials[1];
+        
+        // Validate username và password
+        if (username == null || username.trim().isEmpty() || username.length() < 3) {
+            sendMessage(new Message("register_failure", "Tên đăng nhập phải có ít nhất 3 ký tự"));
+            return;
+        }
+        
+        if (password == null || password.trim().isEmpty() || password.length() < 6) {
+            sendMessage(new Message("register_failure", "Mật khẩu phải có ít nhất 6 ký tự"));
+            return;
+        }
+        
+        // Kiểm tra username có chứa ký tự đặc biệt không
+        if (!username.matches("^[a-zA-Z0-9_]+$")) {
+            sendMessage(new Message("register_failure", "Tên đăng nhập chỉ được chứa chữ cái, số và dấu gạch dưới"));
+            return;
+        }
+        
+        try {
+            User newUser = dbManager.registerUser(username, password);
+            if (newUser != null) {
+                sendMessage(new Message("register_success", "Đăng ký thành công! Vui lòng đăng nhập."));
+            } else {
+                sendMessage(new Message("register_failure", "Tên đăng nhập đã tồn tại"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            sendMessage(new Message("register_failure", "Lỗi hệ thống, vui lòng thử lại sau"));
+        }
+    }
+
     private void handleLogout() throws IOException, SQLException {
         if (user != null) {
             dbManager.updateUserStatus(user.getId(), "offline");
@@ -285,15 +329,19 @@ public class ClientHandler implements Runnable {
     public void sendMessage(Message message) {
         try {
             if (socket != null && !socket.isClosed()) {
+                System.out.println("📤 Gửi message tới " + (user != null ? user.getUsername() : "client") + 
+                    ": type=" + message.getType() + ", content=" + message.getContent());
                 out.writeObject(message);
                 out.flush();
+                System.out.println("✅ Message đã gửi thành công");
             } else {
-                System.out.println(
-                        "Socket đã đóng, không thể gửi tin nhắn tới " + (user != null ? user.getUsername() : "client"));
+                System.out.println("⚠️ Socket đã đóng, không thể gửi tin nhắn tới " + 
+                    (user != null ? user.getUsername() : "client"));
             }
         } catch (IOException e) {
-            System.out.println("Lỗi khi gửi tin nhắn tới " + (user != null ? user.getUsername() : "client") + ": "
-                    + e.getMessage());
+            System.err.println("❌ Lỗi khi gửi tin nhắn tới " + 
+                (user != null ? user.getUsername() : "client") + ": " + e.getMessage());
+            e.printStackTrace();
             // Không gọi lại handleLogout() ở đây để tránh đệ quy
             // Đánh dấu client là đã ngắt kết nối
             try {
@@ -310,6 +358,21 @@ public class ClientHandler implements Runnable {
 
     public Server getServer() {
         return server;
+    }
+
+    // Phương thức ngắt kết nối client
+    public void disconnect() {
+        try {
+            isRunning = false;
+            if (socket != null && !socket.isClosed()) {
+                socket.close();
+            }
+            System.out.println("🔌 Đã ngắt kết nối với client: " + 
+                (user != null ? user.getUsername() : "Unknown"));
+        } catch (IOException e) {
+            System.err.println("❌ Lỗi khi ngắt kết nối client:");
+            e.printStackTrace();
+        }
     }
 
 }

@@ -3,6 +3,7 @@ package client;
 import client.GUI.GameRoomController;
 import client.GUI.LoginController;
 import client.GUI.MainController;
+import client.GUI.RegisterController;
 import common.Match;
 import common.MatchDetails;
 import common.Message;
@@ -33,6 +34,7 @@ public class Client {
     private LoginController loginController;
     private MainController mainController;
     private GameRoomController gameRoomController;
+    private RegisterController registerController;
 
     private volatile boolean isRunning = true;
 
@@ -73,9 +75,24 @@ public class Client {
                         handleMessage(message);
                     }
                 }
+            } catch (java.io.EOFException ex) {
+                // EOFException xảy ra khi server đóng kết nối - đây là bình thường khi logout
+                if (isRunning) {
+                    System.out.println("Server đã đóng kết nối.");
+                    Platform.runLater(() -> {
+                        try {
+                            closeConnection();
+                            showLoginUI();
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    });
+                } else {
+                    System.out.println("Đã đóng kết nối, dừng luồng lắng nghe.");
+                }
             } catch (IOException | ClassNotFoundException ex) {
                 if (isRunning) {
-                    ex.printStackTrace();
+                    System.err.println("Lỗi kết nối: " + ex.getMessage());
                     try {
                         closeConnection(); // Đóng kết nối hiện tại
                     } catch (IOException e) {
@@ -110,6 +127,20 @@ public class Client {
                 Platform.runLater(() -> {
                     if (loginController != null) {
                         loginController.showError((String) message.getContent());
+                    }
+                });
+                break;
+            case "register_success":
+                Platform.runLater(() -> {
+                    if (registerController != null) {
+                        registerController.showSuccess((String) message.getContent());
+                    }
+                });
+                break;
+            case "register_failure":
+                Platform.runLater(() -> {
+                    if (registerController != null) {
+                        registerController.showError((String) message.getContent());
                     }
                 });
                 break;
@@ -303,8 +334,20 @@ public class Client {
     }
 
     public void sendMessage(Message message) throws IOException {
-        out.writeObject(message);
-        out.flush();
+        if (socket != null && !socket.isClosed() && out != null) {
+            try {
+                out.writeObject(message);
+                out.flush();
+            } catch (IOException e) {
+                if (isRunning) {
+                    throw e; // Chỉ throw lỗi nếu đang chạy
+                }
+                // Bỏ qua lỗi nếu đang đóng kết nối
+                System.out.println("Không thể gửi message - kết nối đã đóng: " + e.getMessage());
+            }
+        } else {
+            System.out.println("Không thể gửi message - socket đã đóng");
+        }
     }
 
     public void showMainUI() {
@@ -330,12 +373,23 @@ public class Client {
             } else {
                 System.err.println("Cannot find CSS file: style.css");
             }
-
+            
             primaryStage.setScene(scene);
             primaryStage.setTitle("Penalty Shootout - Main");
-            primaryStage.setMinWidth(400);
-            primaryStage.setMinHeight(300);
-            primaryStage.show();
+            primaryStage.setResizable(true);
+            primaryStage.setMinWidth(1200);
+            primaryStage.setMinHeight(700);
+            
+            // Show window first
+            if (!primaryStage.isShowing()) {
+                primaryStage.show();
+            }
+            
+            // Then maximize after scene is rendered
+            Platform.runLater(() -> {
+                primaryStage.setMaximized(true);
+            });
+            
             sendMessage(new Message("get_users", null));
         } catch (IOException e) {
             e.printStackTrace();
@@ -366,16 +420,94 @@ public class Client {
             } else {
                 System.err.println("Cannot find CSS file: style.css");
             }
-
+            
             primaryStage.setScene(scene);
             primaryStage.setTitle("Penalty Shootout - Login");
-            primaryStage.show();
+            primaryStage.setResizable(true);
+            primaryStage.setMinWidth(1000);
+            primaryStage.setMinHeight(650);
+            
+            // Show window first
+            if (!primaryStage.isShowing()) {
+                primaryStage.show();
+            }
+            
+            // Then maximize after scene is rendered
+            Platform.runLater(() -> {
+                primaryStage.setMaximized(true);
+            });
 
-            // Loại bỏ đoạn mã khởi tạo kết nối ở đây
+            // Tái kết nối đến server nếu socket đã đóng
+            if (socket == null || socket.isClosed()) {
+                System.out.println("Đang tái kết nối đến server...");
+                startConnection("localhost", 12345);
+            }
 
         } catch (IOException e) {
             e.printStackTrace();
             showErrorAlert("Không thể tải giao diện đăng nhập.");
+        }
+    }
+
+    public void showRegisterUI() {
+        try {
+            System.out.println("Loading RegisterUI.fxml...");
+            System.out.println("RegisterController class: " + RegisterController.class);
+            URL fxmlUrl = RegisterController.class.getResource("/resources/GUI/RegisterUI.fxml");
+            System.out.println("FXML URL: " + fxmlUrl);
+            
+            if (fxmlUrl == null) {
+                System.err.println("Cannot find RegisterUI.fxml at /resources/GUI/RegisterUI.fxml");
+                showErrorAlert("Không tìm thấy file giao diện đăng ký.");
+                return;
+            }
+            
+            FXMLLoader loader = new FXMLLoader(fxmlUrl);
+            Parent root = loader.load();
+            registerController = loader.getController();
+
+            if (registerController == null) {
+                System.err.println("Controller is null for RegisterUI.fxml");
+                showErrorAlert("Không thể tải controller giao diện đăng ký.");
+                return;
+            }
+
+            registerController.setClient(this);
+            Scene scene = new Scene(root);
+
+            URL cssLocation = RegisterController.class.getResource("/resources/GUI/style.css");
+            if (cssLocation != null) {
+                scene.getStylesheets().add(cssLocation.toExternalForm());
+                System.out.println("CSS file loaded: " + cssLocation.toExternalForm());
+            } else {
+                System.err.println("Cannot find CSS file: style.css");
+            }
+            
+            primaryStage.setScene(scene);
+            primaryStage.setTitle("Penalty Shootout - Register");
+            primaryStage.setResizable(true);
+            primaryStage.setMinWidth(1000);
+            primaryStage.setMinHeight(650);
+            
+            // Show window first
+            if (!primaryStage.isShowing()) {
+                primaryStage.show();
+            }
+            
+            // Then maximize after scene is rendered
+            Platform.runLater(() -> {
+                primaryStage.setMaximized(true);
+            });
+
+            // Đảm bảo có kết nối đến server
+            if (socket == null || socket.isClosed()) {
+                System.out.println("Đang kết nối đến server...");
+                startConnection("localhost", 12345);
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            showErrorAlert("Không thể tải giao diện đăng ký: " + e.getMessage());
         }
     }
 
@@ -402,10 +534,22 @@ public class Client {
             } else {
                 System.err.println("Cannot find CSS file: style.css");
             }
-
+            
             primaryStage.setScene(scene);
             primaryStage.setTitle("Penalty Shootout - Game Room");
-            primaryStage.show();
+            primaryStage.setResizable(true);
+            primaryStage.setMinWidth(1400);
+            primaryStage.setMinHeight(800);
+            
+            // Show window first
+            if (!primaryStage.isShowing()) {
+                primaryStage.show();
+            }
+            
+            // Then maximize after scene is rendered
+            Platform.runLater(() -> {
+                primaryStage.setMaximized(true);
+            });
 
             // Hiển thị thông báo vai trò
             gameRoomController.showStartMessage(startMessage);
@@ -422,14 +566,26 @@ public class Client {
 
     public void closeConnection() throws IOException {
         isRunning = false; // Dừng luồng lắng nghe
-        if (in != null) {
-            in.close();
+        try {
+            if (in != null) {
+                in.close();
+            }
+        } catch (IOException e) {
+            System.out.println("Lỗi khi đóng input stream: " + e.getMessage());
         }
-        if (out != null) {
-            out.close();
+        try {
+            if (out != null) {
+                out.close();
+            }
+        } catch (IOException e) {
+            System.out.println("Lỗi khi đóng output stream: " + e.getMessage());
         }
-        if (socket != null && !socket.isClosed()) {
-            socket.close();
+        try {
+            if (socket != null && !socket.isClosed()) {
+                socket.close();
+            }
+        } catch (IOException e) {
+            System.out.println("Lỗi khi đóng socket: " + e.getMessage());
         }
     }
 

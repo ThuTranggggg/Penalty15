@@ -31,6 +31,7 @@ import javafx.scene.shape.*;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
+import javafx.scene.input.MouseEvent;
 import javafx.util.Duration;
 
 public class GameRoomController {
@@ -39,48 +40,161 @@ public class GameRoomController {
     @FXML
     private TextField chatInput;
     @FXML
-    private Button shootButton;
-    @FXML
-    private Button goalkeeperButton;
-    @FXML
     private Button quitButton;
     @FXML
     private Pane gamePane;
+    @FXML
+    private ToggleButton shootModeButton;
+    @FXML
+    private ToggleButton goalkeeperModeButton;
+    @FXML
+    private Label instructionLabel;
+    @FXML
+    private Rectangle zone1, zone2, zone3, zone4, zone5, zone6; // 6 Click zones
+    @FXML
+    private Circle goalkeeper;
+    @FXML
+    private Circle ball;
 
     private Client client;
-    ChoiceDialog<String> dialog = new ChoiceDialog<>("Middle", "Left", "Middle", "Right");
 
-    // Các thành phần đồ họa
-    private Group ball; // Thay đổi từ Circle thành Group
-    private Circle ballCircle; // Thêm biến này để tham chiếu đến Circle bên trong ball
-    private Group goalkeeper;
+    // Game state
+    private String currentMode = ""; // "shoot" or "goalkeeper"
+    private boolean actionPerformed = false;
+
+    // Các thành phần đồ họa - OLD SYSTEM (keep for compatibility)
+    private Group ballGroup; // Changed name to avoid conflict
+    private Circle ballCircle;
+    private Group goalkeeperGroup; // Changed name
     private Group player;
     private Group imageWinGroup;
     private Group imageLoseGroup;
     @FXML
     private Label scoreLabel;
     @FXML
-    private Label timerLabel; // Hiển thị thời gian đếm ngược
+    private Label timerLabel;
+    @FXML
+    private Label roundLabel; // Label hiển thị số vòng
+    
+    // Legacy compatibility - REMOVED, using new zone system
 
-    // Các phần âm thanh
-    private AudioClip siuuuuuu;
-    private AudioClip mu;
+    // Các phần âm thanh - DISABLED DUE TO MODULE ACCESS ISSUE
+    // private AudioClip siuuuuuu;
+    // private AudioClip mu;
     private Timeline countdownTimeline;
-    private int timeRemaining; // Thời gian còn lại cho lượt
+    private int timeRemaining;
 
     private static final int TURN_TIMEOUT = 15;
-
-    private int lastTurnDuration = 15; // Giá trị mặc định
-
+    private int lastTurnDuration = 15;
     private String yourRole = "";
+    private boolean isMyTurn = false;
+    private String waitingForOpponentAction = "";
+
+    // ============ NEW CLICK-BASED ZONE SYSTEM ============
+    @FXML
+    private void handleZoneClick(MouseEvent event) {
+        if (!actionPerformed && !currentMode.isEmpty()) {
+            Rectangle clickedZone = (Rectangle) event.getSource();
+            String direction = getDirectionFromZone(clickedZone);
+            
+            // Send action to server
+            Message message;
+            if (currentMode.equals("shoot")) {
+                message = new Message("shoot", direction);
+                System.out.println("Shot direction: " + direction);
+            } else {
+                message = new Message("goalkeeper", direction);
+                System.out.println("Goalkeeper direction: " + direction);
+            }
+            
+            try {
+                client.sendMessage(message);
+                actionPerformed = true;
+                disableModes();
+                if (countdownTimeline != null) {
+                    countdownTimeline.stop();
+                }
+            } catch (IOException ex) {
+                Logger.getLogger(GameRoomController.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        }
+    }
+    
+    private String getDirectionFromZone(Rectangle zone) {
+        if (zone == zone1) return "1"; // Top Left
+        if (zone == zone2) return "2"; // Top Center
+        if (zone == zone3) return "3"; // Top Right
+        if (zone == zone4) return "4"; // Bottom Left
+        if (zone == zone5) return "5"; // Bottom Center
+        if (zone == zone6) return "6"; // Bottom Right
+        return "5"; // Default to center
+    }
+    
+    @FXML
+    private void handleShootMode() {
+        if (shootModeButton.isSelected()) {
+            currentMode = "shoot";
+            goalkeeperModeButton.setSelected(false);
+            actionPerformed = false;
+            enableZones(true);
+            instructionLabel.setText("🎯 Nhấp vào khung thành để chọn vị trí sút bóng!");
+            instructionLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #4ecca3; -fx-alignment: center; -fx-padding: 8; -fx-background-color: #e8fff6; -fx-background-radius: 10; -fx-border-radius: 10;");
+        } else {
+            currentMode = "";
+            enableZones(false);
+            instructionLabel.setText("👉 Chọn chế độ SÚT BÓNG hoặc CHẶN BÓNG để tiếp tục");
+            instructionLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #ff6b9d; -fx-alignment: center; -fx-padding: 8; -fx-background-color: #ffeef8; -fx-background-radius: 10; -fx-border-radius: 10;");
+        }
+    }
+    
+    @FXML
+    private void handleGoalkeeperMode() {
+        if (goalkeeperModeButton.isSelected()) {
+            currentMode = "goalkeeper";
+            shootModeButton.setSelected(false);
+            actionPerformed = false;
+            enableZones(true);
+            instructionLabel.setText("🛡️ Nhấp vào khung thành để chọn vị trí chặn bóng!");
+            instructionLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #ffd93d; -fx-alignment: center; -fx-padding: 8; -fx-background-color: #fffbeb; -fx-background-radius: 10; -fx-border-radius: 10;");
+        } else {
+            currentMode = "";
+            enableZones(false);
+            instructionLabel.setText("👉 Chọn chế độ SÚT BÓNG hoặc CHẶN BÓNG để tiếp tục");
+            instructionLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #ff6b9d; -fx-alignment: center; -fx-padding: 8; -fx-background-color: #ffeef8; -fx-background-radius: 10; -fx-border-radius: 10;");
+        }
+    }
+    
+    private void enableZones(boolean enable) {
+        String enabledStyle = "-fx-fill: rgba(76, 204, 163, 0.2); -fx-stroke: rgba(76, 204, 163, 0.6); -fx-stroke-width: 3; -fx-stroke-dash-array: 10 5;";
+        String disabledStyle = "-fx-fill: transparent; -fx-stroke: transparent;";
+        
+        if (zone1 != null) zone1.setStyle(enable ? enabledStyle : disabledStyle);
+        if (zone2 != null) zone2.setStyle(enable ? enabledStyle : disabledStyle);
+        if (zone3 != null) zone3.setStyle(enable ? enabledStyle : disabledStyle);
+        if (zone4 != null) zone4.setStyle(enable ? enabledStyle : disabledStyle);
+        if (zone5 != null) zone5.setStyle(enable ? enabledStyle : disabledStyle);
+        if (zone6 != null) zone6.setStyle(enable ? enabledStyle : disabledStyle);
+    }
+    
+    private void disableModes() {
+        shootModeButton.setDisable(true);
+        goalkeeperModeButton.setDisable(true);
+        enableZones(false);
+        instructionLabel.setText("⏳ Đã gửi lựa chọn! Đang chờ đối thủ...");
+        instructionLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #999; -fx-alignment: center; -fx-padding: 8; -fx-background-color: #f5f5f5; -fx-background-radius: 10; -fx-border-radius: 10;");
+    }
 
     public void updateScore(int[] scores) {
         Platform.runLater(() -> {
             int yourScore = scores[0];
             int opponentScore = scores[1];
             int currentRound = scores[2];
-            scoreLabel.setText("Round: " + (currentRound + 1) + "         Bạn: " + yourScore
-                    + "   -   Đối thủ: " + opponentScore);
+            scoreLabel.setText(yourScore + " - " + opponentScore);
+            
+            // Cập nhật hiển thị vòng hiện tại
+            if (roundLabel != null) {
+                roundLabel.setText("Vòng " + currentRound + "/10");
+            }
         });
     }
 
@@ -90,31 +204,33 @@ public class GameRoomController {
 
     @FXML
     private void initialize() {
-        shootButton.setDisable(true);
-        goalkeeperButton.setDisable(true);
+        // Disable mode buttons initially
+        shootModeButton.setDisable(true);
+        goalkeeperModeButton.setDisable(true);
+        enableZones(false);
 
-        // Khởi tạo giá trị ban đầu cho timerLabel
+        // Initial timer label
         if (timerLabel != null) {
-            timerLabel.setText("Thời gian còn lại: 0 giây");
-        } else {
-            System.err.println("timerLabel is null!");
+            timerLabel.setText("15");
         }
 
-        // Trì hoãn việc vẽ sân bóng cho đến khi gamePane có kích thước
+        // Initialize score
+        if (scoreLabel != null) {
+            scoreLabel.setText("0 - 0");
+        }
+        
+        // Draw field when pane is ready
         Platform.runLater(() -> {
             drawField();
         });
-
-        if (scoreLabel != null) {
-            scoreLabel.setText("Round: " + 1 + "         Bạn: " + 0
-                    + "   -   Đối thủ: " + 0);
-        } else {
-            System.err.println("scoreLabel is null!");
-        }
+        
+        // Audio disabled due to module access issues
+        // playBackgroundMusic();
     }
 
     private void drawField() {
-        playBackgroundMusic();
+        // Audio disabled - remove duplicate call
+        // playBackgroundMusic();
         // Xóa các phần tử cũ nếu có
         gamePane.getChildren().clear();
 
@@ -173,12 +289,12 @@ public class GameRoomController {
         gamePane.getChildren().add(player);
 
         // Vẽ thủ môn chi tiết
-        goalkeeper = createPlayer(paneWidth / 2, 100, Color.RED, "/assets/goalkeeper_head.jpg");
-        gamePane.getChildren().add(goalkeeper);
+        goalkeeperGroup = createPlayer(paneWidth / 2, 100, Color.RED, "/assets/goalkeeper_head.jpg");
+        gamePane.getChildren().add(goalkeeperGroup);
 
         // Vẽ bóng với họa tiết đen trắng
-        ball = createBall(paneWidth / 2, paneHeight - 120, 10);
-        gamePane.getChildren().add(ball);
+        ballGroup = createBall(paneWidth / 2, paneHeight - 120, 10);
+        gamePane.getChildren().add(ballGroup);
 
         // Hình ảnh thắng
         Image image = new Image(getClass().getResource("/assets/c1cup.png").toExternalForm());
@@ -321,35 +437,11 @@ public class GameRoomController {
         });
     }
 
-    @FXML
-    private void handleShoot() {
-        dialog = new ChoiceDialog<>("Middle", "Left", "Middle", "Right");
-        dialog.setTitle("Chọn Hướng Sút");
-        dialog.setHeaderText("Chọn hướng sút:");
-        dialog.setContentText("Hướng:");
-
-        Optional<String> result = dialog.showAndWait();
-        result.ifPresent(direction -> {
-            if (timeRemaining < 0) {
-                return;
-            }
-            Message shootMessage = new Message("shoot", direction);
-            try {
-                client.sendMessage(shootMessage);
-                System.out.println("Sent shoot direction: " + direction);
-                shootButton.setDisable(true);
-                // animateShoot(direction);
-            } catch (IOException ex) {
-                Logger.getLogger(GameRoomController.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        });
-        if (countdownTimeline != null) {
-            countdownTimeline.stop(); // Dừng đếm ngược khi người chơi đã chọn
-        }
-    }
+    // OLD METHODS REMOVED - Now using zone click system
+    // handleShoot() and handleGoalkeeper() replaced by handleZoneClick()
 
     public void animateShootVao(String directShoot, String directKeeper) {
-        siuuuuuu.play();
+        // Audio disabled - siuuuuuu.play();
         Platform.runLater(() -> {
             // Tạo đường đi cho bóng
             Path path = new Path();
@@ -358,10 +450,33 @@ public class GameRoomController {
             double targetX = ballCircle.getCenterX();
             double targetY = ballCircle.getCenterY() - 210;
 
-            if (directShoot.equalsIgnoreCase("Left")) {
-                targetX -= 90;
-            } else if (directShoot.equalsIgnoreCase("Right")) {
-                targetX += 90;
+            // Tính toán vị trí dựa trên 6 zones (1-6)
+            // Zone 1,2,3: Hàng trên | Zone 4,5,6: Hàng dưới
+            switch (directShoot) {
+                case "1": // Top Left
+                    targetX -= 90;
+                    targetY -= 20;
+                    break;
+                case "2": // Top Center
+                    // targetX không đổi
+                    targetY -= 20;
+                    break;
+                case "3": // Top Right
+                    targetX += 90;
+                    targetY -= 20;
+                    break;
+                case "4": // Bottom Left
+                    targetX -= 90;
+                    break;
+                case "5": // Bottom Center
+                    // targetX không đổi
+                    break;
+                case "6": // Bottom Right
+                    targetX += 90;
+                    break;
+                default:
+                    // Default center
+                    break;
             }
 
             path.getElements().add(new LineTo(targetX, targetY));
@@ -370,29 +485,49 @@ public class GameRoomController {
             PathTransition pathTransition = new PathTransition();
             pathTransition.setDuration(Duration.seconds(1));
             pathTransition.setPath(path);
-            pathTransition.setNode(ball);
+            pathTransition.setNode(ballGroup);
             pathTransition.play();
 
             // Tạo animation cho thủ môn
             double targetKeeperX = 0;
-            if (directKeeper.equalsIgnoreCase("Left")) {
-                targetKeeperX = -90;
-            } else if (directKeeper.equalsIgnoreCase("Right")) {
-                targetKeeperX = 90;
+            double targetKeeperY = 0;
+            
+            switch (directKeeper) {
+                case "1": // Top Left
+                    targetKeeperX = -90;
+                    targetKeeperY = -20;
+                    break;
+                case "2": // Top Center
+                    targetKeeperY = -20;
+                    break;
+                case "3": // Top Right
+                    targetKeeperX = 90;
+                    targetKeeperY = -20;
+                    break;
+                case "4": // Bottom Left
+                    targetKeeperX = -90;
+                    break;
+                case "5": // Bottom Center
+                    // Không đổi
+                    break;
+                case "6": // Bottom Right
+                    targetKeeperX = 90;
+                    break;
             }
 
-            TranslateTransition translateTransition = new TranslateTransition(Duration.seconds(1), goalkeeper);
+            TranslateTransition translateTransition = new TranslateTransition(Duration.seconds(1), goalkeeperGroup);
             translateTransition.setByX(targetKeeperX);
+            translateTransition.setByY(targetKeeperY);
             translateTransition.play();
 
             // Tạo một khoảng chờ 2 giây trước khi reset vị trí
             PauseTransition pauseTransition = new PauseTransition(Duration.seconds(2));
             pauseTransition.setOnFinished(event -> {
                 // Đặt lại vị trí của quả bóng và thủ môn ngay lập tức
-                ball.setTranslateX(0);
-                ball.setTranslateY(0);
-                goalkeeper.setTranslateX(0);
-                goalkeeper.setTranslateY(0);
+                ballGroup.setTranslateX(0);
+                ballGroup.setTranslateY(0);
+                goalkeeperGroup.setTranslateX(0);
+                goalkeeperGroup.setTranslateY(0);
             });
 
             // Bắt đầu pauseTransition sau khi các animations hoàn thành
@@ -410,10 +545,27 @@ public class GameRoomController {
             double targetX = ballCircle.getCenterX();
             double targetY = ballCircle.getCenterY() - 210;
 
-            if (directShoot.equalsIgnoreCase("Left")) {
-                targetX -= 90;
-            } else if (directShoot.equalsIgnoreCase("Right")) {
-                targetX += 90;
+            // Tính toán vị trí dựa trên 6 zones
+            switch (directShoot) {
+                case "1": // Top Left
+                    targetX -= 90;
+                    targetY -= 20;
+                    break;
+                case "2": // Top Center
+                    targetY -= 20;
+                    break;
+                case "3": // Top Right
+                    targetX += 90;
+                    targetY -= 20;
+                    break;
+                case "4": // Bottom Left
+                    targetX -= 90;
+                    break;
+                case "5": // Bottom Center
+                    break;
+                case "6": // Bottom Right
+                    targetX += 90;
+                    break;
             }
 
             // Bóng đi đến vị trí sút
@@ -422,40 +574,76 @@ public class GameRoomController {
             // Đường đi ra ngoài nếu bị đẩy ra
             double targetPathOutX = targetX;
             double targetPathOutY = targetY - 25;
-            if (directKeeper.equalsIgnoreCase("Left")) {
-                targetPathOutX -= 40;
-            } else if (directKeeper.equalsIgnoreCase("Right")) {
-                targetPathOutX += 40;
-            } else {
-                targetPathOutY -= 40;
+            
+            switch (directKeeper) {
+                case "1": // Top Left
+                    targetPathOutX -= 40;
+                    targetPathOutY -= 20;
+                    break;
+                case "2": // Top Center
+                    targetPathOutY -= 40;
+                    break;
+                case "3": // Top Right
+                    targetPathOutX += 40;
+                    targetPathOutY -= 20;
+                    break;
+                case "4": // Bottom Left
+                    targetPathOutX -= 40;
+                    break;
+                case "5": // Bottom Center
+                    targetPathOutY -= 40;
+                    break;
+                case "6": // Bottom Right
+                    targetPathOutX += 40;
+                    break;
             }
+            
             Path pathOut = new Path();
             pathOut.getElements().add(new MoveTo(targetX, targetY));
             pathOut.getElements().add(new LineTo(targetPathOutX, targetPathOutY));
 
             // Tạo animation cho bóng đi đến khung thành
-            PathTransition pathTransitionToGoal = new PathTransition(Duration.seconds(0.9), path, ball);
+            PathTransition pathTransitionToGoal = new PathTransition(Duration.seconds(0.9), path, ballGroup);
 
             // Tạo animation cho bóng bị đẩy ra ngoài (chỉ khi chặn được)
-            PathTransition pathTransitionOut = new PathTransition(Duration.seconds(0.3), pathOut, ball);
+            PathTransition pathTransitionOut = new PathTransition(Duration.seconds(0.3), pathOut, ballGroup);
 
             // Tạo animation cho thủ môn
             double targetKeeperX = 0;
-            if (directKeeper.equalsIgnoreCase("Left")) {
-                targetKeeperX = -90;
-            } else if (directKeeper.equalsIgnoreCase("Right")) {
-                targetKeeperX = 90;
+            double targetKeeperY = 0;
+            
+            switch (directKeeper) {
+                case "1": // Top Left
+                    targetKeeperX = -90;
+                    targetKeeperY = -20;
+                    break;
+                case "2": // Top Center
+                    targetKeeperY = -20;
+                    break;
+                case "3": // Top Right
+                    targetKeeperX = 90;
+                    targetKeeperY = -20;
+                    break;
+                case "4": // Bottom Left
+                    targetKeeperX = -90;
+                    break;
+                case "5": // Bottom Center
+                    break;
+                case "6": // Bottom Right
+                    targetKeeperX = 90;
+                    break;
             }
 
-            TranslateTransition goalkeeperMove = new TranslateTransition(Duration.seconds(1), goalkeeper);
+            TranslateTransition goalkeeperMove = new TranslateTransition(Duration.seconds(1), goalkeeperGroup);
             goalkeeperMove.setByX(targetKeeperX);
+            goalkeeperMove.setByY(targetKeeperY);
             goalkeeperMove.setAutoReverse(false);
 
             PauseTransition pause = new PauseTransition(Duration.seconds(2));
 
             // Kết hợp các animations
             SequentialTransition ballAnimation;
-            if (directShoot.equalsIgnoreCase(directKeeper)) {
+            if (directShoot.equals(directKeeper)) {
                 // Nếu thủ môn chặn được, thêm animation bóng bị đẩy ra ngoài
                 ballAnimation = new SequentialTransition(pathTransitionToGoal, pathTransitionOut, pause);
             } else {
@@ -469,10 +657,10 @@ public class GameRoomController {
             // Thiết lập hành động khi kết thúc gameAnimation để reset vị trí ngay lập tức
             gameAnimation.setOnFinished(event -> {
                 // Đặt lại vị trí của quả bóng và thủ môn ngay lập tức
-                ball.setTranslateX(0);
-                ball.setTranslateY(0);
-                goalkeeper.setTranslateX(0);
-                goalkeeper.setTranslateY(0);
+                ballGroup.setTranslateX(0);
+                ballGroup.setTranslateY(0);
+                goalkeeperGroup.setTranslateX(0);
+                goalkeeperGroup.setTranslateY(0);
             });
 
             gameAnimation.play();
@@ -480,55 +668,47 @@ public class GameRoomController {
         });
     }
 
-    @FXML
-    private void handleGoalkeeper() {
-        dialog = new ChoiceDialog<>("Middle", "Left", "Middle", "Right");
-        dialog.setTitle("Chọn Hướng Chặn");
-        dialog.setHeaderText("Chọn hướng chặn:");
-        dialog.setContentText("Hướng:");
-
-        Optional<String> result = dialog.showAndWait();
-        result.ifPresent(direction -> {
-            if (timeRemaining < 0) {
-                return;
-            }
-            Message goalkeeperMessage = new Message("goalkeeper", direction);
-            try {
-                client.sendMessage(goalkeeperMessage);
-                System.out.println("Sent goalkeeper direction: " + direction);
-                goalkeeperButton.setDisable(true);
-                // animateGoalkeeper(direction);
-            } catch (IOException ex) {
-                Logger.getLogger(GameRoomController.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        });
-        if (countdownTimeline != null) {
-            countdownTimeline.stop(); // Dừng đếm ngược khi người chơi đã chọn
-        }
-    }
-
-    private boolean isMyTurn = false;
-
-    private String waitingForOpponentAction = "";
+    // OLD METHODS REMOVED - Now using zone click system
+    // handleShoot() and handleGoalkeeper() replaced by handleZoneClick()
 
     public void promptYourTurn(int durationInSeconds) {
         Platform.runLater(() -> {
-            lastTurnDuration = durationInSeconds; // Update last turn duration
+            lastTurnDuration = durationInSeconds;
             isMyTurn = true;
-            yourRole = "Shooter"; // You are the Shooter in this turn
-            shootButton.setDisable(false); // Enable shoot button
-            goalkeeperButton.setDisable(true); // Disable goalkeeper button
+            yourRole = "Shooter";
+            actionPerformed = false;
+            
+            // Enable shoot mode
+            shootModeButton.setDisable(false);
+            goalkeeperModeButton.setDisable(true);
+            shootModeButton.setSelected(false);
+            goalkeeperModeButton.setSelected(false);
+            currentMode = "";
+            
+            instructionLabel.setText("🎯 LƯỢT CỦA BẠN: Chọn CHẾ ĐỘ SÚT BÓNG!");
+            instructionLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #4ecca3; -fx-alignment: center; -fx-padding: 8; -fx-background-color: #e8fff6; -fx-background-radius: 10; -fx-border-radius: 10;");
+            
             startCountdown(durationInSeconds);
         });
     }
 
     public void promptGoalkeeperTurn(int durationInSeconds) {
         Platform.runLater(() -> {
-            lastTurnDuration = durationInSeconds; // Update last turn duration
+            lastTurnDuration = durationInSeconds;
             isMyTurn = true;
-            yourRole = "Goalkeeper"; // You are the Goalkeeper in this turn
-            goalkeeperButton.setDisable(false); // Enable goalkeeper button
-            shootButton.setDisable(true); // Disable shoot button
+            yourRole = "Goalkeeper";
+            actionPerformed = false;
+            
+            // Enable goalkeeper mode
+            goalkeeperModeButton.setDisable(false);
+            shootModeButton.setDisable(true);
+            shootModeButton.setSelected(false);
+            goalkeeperModeButton.setSelected(false);
+            currentMode = "";
+            
+            instructionLabel.setText("🛡️ LƯỢT CỦA BẠN: Chọn CHẾ ĐỘ CHẶN BÓNG!");
+            instructionLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #ffd93d; -fx-alignment: center; -fx-padding: 8; -fx-background-color: #fffbeb; -fx-background-radius: 10; -fx-border-radius: 10;");
+            
             startCountdown(durationInSeconds);
         });
     }
@@ -536,24 +716,25 @@ public class GameRoomController {
     public void handleOpponentTurn(int durationInSeconds) {
         Platform.runLater(() -> {
             isMyTurn = false;
-            shootButton.setDisable(true);
-            goalkeeperButton.setDisable(true);
+            shootModeButton.setDisable(true);
+            goalkeeperModeButton.setDisable(true);
+            enableZones(false);
 
-            // Determine what action the opponent is performing based on your role
             if (yourRole.equals("Shooter")) {
-                waitingForOpponentAction = "goalkeeper"; // If you're Shooter, opponent is Goalkeeper
+                waitingForOpponentAction = "goalkeeper";
             } else if (yourRole.equals("Goalkeeper")) {
-                waitingForOpponentAction = "shoot"; // If you're Goalkeeper, opponent is Shooter
-            } else {
-                waitingForOpponentAction = ""; // If role is not defined, leave it empty
+                waitingForOpponentAction = "shoot";
             }
+            
+            instructionLabel.setText("⏳ LƯỢT ĐỐI THỦ - Đang chờ đối thủ...");
+            instructionLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #999; -fx-alignment: center; -fx-padding: 8; -fx-background-color: #f5f5f5; -fx-background-radius: 10; -fx-border-radius: 10;");
 
             startCountdown(durationInSeconds);
         });
     }
 
     public void showRoundResult(String roundResult) {
-        siuuuuuu.play();
+        // Audio disabled - siuuuuuu.play();
         Platform.runLater(() -> {
             Alert alert = new Alert(AlertType.INFORMATION);
             alert.setTitle("Kết Quả Lượt");
@@ -564,9 +745,10 @@ public class GameRoomController {
     }
 
     public void endMatch(String result) {
-        if (mu != null) {
-            mu.stop(); // Stop the background music
-        }
+        // Audio disabled - stop background music
+        // if (mu != null) {
+        //     mu.stop();
+        // }
         Platform.runLater(() -> {
             Alert alert = new Alert(AlertType.INFORMATION);
             alert.setTitle("Kết Thúc Trận Đấu");
@@ -699,9 +881,10 @@ public class GameRoomController {
             alert.setHeaderText(null);
             alert.setContentText(message);
             alert.show(); // Thay vì showAndWait()
-            // Vô hiệu hóa các nút hành động
-            shootButton.setDisable(true);
-            goalkeeperButton.setDisable(true);
+            // Vô hiệu hóa các nút hành động - NEW SYSTEM
+            shootModeButton.setDisable(true);
+            goalkeeperModeButton.setDisable(true);
+            enableZones(false);
             // Cập nhật trạng thái chờ đối thủ
             if (yourRole.equals("Shooter")) {
                 waitingForOpponentAction = "goalkeeper";
@@ -713,6 +896,9 @@ public class GameRoomController {
         });
     }
 
+    // Audio playback disabled due to JavaFX module access issues
+    // To re-enable: add --add-exports javafx.base/com.sun.javafx=ALL-UNNAMED to JVM args
+    /*
     private void playBackgroundMusic() {
         siuuuuuu = new AudioClip(getClass().getResource("/sound/siuuu.wav").toExternalForm());
         mu = new AudioClip(getClass().getResource("/sound/mu.wav").toExternalForm());
@@ -720,6 +906,7 @@ public class GameRoomController {
         mu.setVolume(0.15f); // Set volume to 50%
         mu.play();// Play the music
     }
+    */
 
     public void handleOpponentTimeout(String message) {
         Platform.runLater(() -> {
@@ -728,11 +915,13 @@ public class GameRoomController {
             }
             isMyTurn = true;
             waitingForOpponentAction = "";
-            // Kiểm tra vai trò và kích hoạt nút hành động tương ứng
+            // Kiểm tra vai trò và kích hoạt nút hành động tương ứng - NEW SYSTEM
             if (yourRole.equals("Shooter")) {
-                shootButton.setDisable(false);
+                shootModeButton.setDisable(false);
+                goalkeeperModeButton.setDisable(true);
             } else if (yourRole.equals("Goalkeeper")) {
-                goalkeeperButton.setDisable(false);
+                goalkeeperModeButton.setDisable(false);
+                shootModeButton.setDisable(true);
             }
             // Bắt đầu đồng hồ đếm ngược cho lượt của bạn
             startCountdown(TURN_TIMEOUT);
@@ -750,9 +939,9 @@ public class GameRoomController {
             // Xác định thông báo phù hợp
             final String action;
             if (isMyTurn) {
-                if (yourRole.equals("Shooter") && !shootButton.isDisabled()) {
+                if (yourRole.equals("Shooter") && !shootModeButton.isDisabled()) {
                     action = "Thời gian còn lại: ";
-                } else if (yourRole.equals("Goalkeeper") && !goalkeeperButton.isDisabled()) {
+                } else if (yourRole.equals("Goalkeeper") && !goalkeeperModeButton.isDisabled()) {
                     action = "Thời gian còn lại: ";
                 } else {
                     action = "Thời gian còn lại: ";
@@ -772,11 +961,12 @@ public class GameRoomController {
 
             if (timeRemaining < 0) {
                 countdownTimeline.stop();
-                dialog.close();
+                // Dialog removed in new click-based system
                 timerLabel.setText(action + "0 giây");
-                // Vô hiệu hóa các nút hành động khi hết thời gian
-                shootButton.setDisable(true);
-                goalkeeperButton.setDisable(true);
+                // Vô hiệu hóa các nút hành động và zones khi hết thời gian
+                shootModeButton.setDisable(true);
+                goalkeeperModeButton.setDisable(true);
+                enableZones(false);
                 if (yourRole.equals("Shooter")) {
                     try {
                         client.sendMessage(new Message("timeout", "shooter"));
@@ -799,9 +989,9 @@ public class GameRoomController {
         // Cập nhật timerLabel lần đầu tiên
         final String action;
         if (isMyTurn) {
-            if (yourRole.equals("Shooter") && !shootButton.isDisabled()) {
+            if (yourRole.equals("Shooter") && !shootModeButton.isDisabled()) {
                 action = "Thời gian còn lại: ";
-            } else if (yourRole.equals("Goalkeeper") && !goalkeeperButton.isDisabled()) {
+            } else if (yourRole.equals("Goalkeeper") && !goalkeeperModeButton.isDisabled()) {
                 action = "Thời gian còn lại: ";
             } else {
                 action = "Thời gian còn lại: ";

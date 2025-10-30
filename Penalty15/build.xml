@@ -1,6 +1,40 @@
 <?xml version="1.0" encoding="UTF-8"?><!-- You may freely edit this file. See commented blocks below for --><!-- some examples of how to customize the build. --><!-- (If you delete it and reopen the project it will be recreated.) --><!-- By default, only the Clean and Build commands use this build script. --><project name="PenaltyShootoutClient" default="default" basedir="." xmlns:fx="javafx:com.sun.javafx.tools.ant">
     <description>Builds, tests, and runs the project PenaltyShootoutClient.</description>
+    
+    <!-- ============================================ -->
+    <!-- FIX: Java 15+ Nashorn JavaScript Engine     -->
+    <!-- ============================================ -->
+    <property name="fallback.no.javascript" value="true"/>
+    
     <import file="nbproject/build-impl.xml"/>
+    
+    <!-- ============================================ -->
+    <!-- Override JavaFX Deployment Targets          -->
+    <!-- ============================================ -->
+    <!-- Disable all JavaFX deployment tasks that require JavaScript engine -->
+    <target name="jfx-deployment">
+        <echo message="✅ JavaFX deployment skipped (Java 15+ fix)"/>
+    </target>
+    
+    <target name="-jfx-deployment" depends="jar">
+        <echo message="✅ Internal JavaFX deployment skipped"/>
+    </target>
+    
+    <target name="-do-jfx-deployment" depends="jar">
+        <echo message="✅ Internal JavaFX deployment skipped"/>
+    </target>
+    
+    <!-- ============================================ -->
+    <!-- Copy Resources to Build Directory            -->
+    <!-- ============================================ -->
+    <target name="-post-compile">
+        <echo message="📦 Copying resources to build/classes..."/>
+        <copy todir="${build.classes.dir}/resources">
+            <fileset dir="src/resources"/>
+        </copy>
+        <echo message="✅ Resources copied successfully"/>
+    </target>
+    
     <!--
 
     There exist several targets which are by default empty and which can be 

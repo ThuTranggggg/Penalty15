@@ -41,6 +41,8 @@ public class MainController {
     @FXML
     private TableColumn<User, String> statusColumn;
     @FXML
+    private TableColumn<User, Void> actionColumn;
+    @FXML
     private Label statusLabel;
 
     private Client client;
@@ -48,6 +50,8 @@ public class MainController {
 
     @FXML
     private TableView<User> leaderboardTable;
+    @FXML
+    private TableColumn<User, Integer> lbRankColumn;
     @FXML
     private TableColumn<User, String> lbNameColumn;
     @FXML
@@ -102,9 +106,21 @@ public class MainController {
         client.getUser().setStatus("offline");
         // Gửi yêu cầu đăng xuất
         if (client.getUser() != null) {
-            Message logoutMessage = new Message("logout", client.getUser().getId());
-            client.sendMessage(logoutMessage);
-            client.showLoginUI();
+            try {
+                Message logoutMessage = new Message("logout", client.getUser().getId());
+                client.sendMessage(logoutMessage);
+                
+                // Đợi một chút để message được gửi đi
+                Thread.sleep(100);
+            } catch (Exception e) {
+                System.out.println("Lỗi khi gửi logout message: " + e.getMessage());
+            } finally {
+                // Đóng kết nối hiện tại
+                client.closeConnection();
+                
+                // Hiển thị màn hình login (sẽ tự động tái kết nối)
+                client.showLoginUI();
+            }
         }
     }
 
@@ -191,14 +207,29 @@ public class MainController {
         alert.showAndWait();
     }
 
-    int demRole = 0;
-
     @FXML
     private void initialize() {
 
         // Cấu hình bảng người chơi
         nameColumn.setCellValueFactory(new PropertyValueFactory<>("username"));
+        
+        // Styling cho cột điểm
+        pointsColumn.setCellFactory(column -> new TableCell<User, Integer>() {
+            @Override
+            protected void updateItem(Integer item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setStyle("");
+                } else {
+                    setText(item.toString());
+                    setStyle("-fx-font-weight: bold; -fx-text-fill: #0284c7; " +
+                           "-fx-font-size: 14px; -fx-alignment: center;");
+                }
+            }
+        });
         pointsColumn.setCellValueFactory(new PropertyValueFactory<>("points"));
+        
         statusColumn.setCellValueFactory(new PropertyValueFactory<>("status"));
 
         // Custom cell factory cho statusColumn
@@ -250,46 +281,282 @@ public class MainController {
 
         });
 
-        // Sự kiện double click để gửi yêu cầu trận đấu
-        usersTable.setRowFactory(tv -> {
-            TableRow<User> row = new TableRow<>();
-            row.setOnMouseClicked(event -> {
-                if (event.getClickCount() == 2 && (!row.isEmpty())) {
-                    User clickedUser = row.getItem();
-                    if (clickedUser.getId() != client.getUser().getId()) {
-                        Message matchRequest = new Message("request_match", clickedUser.getId());
+        // Cấu hình cột Action với nút "Mời"
+        actionColumn.setCellFactory(column -> new TableCell<User, Void>() {
+            private final Button inviteButton = new Button("🎮 Mời");
+            
+            {
+                inviteButton.setStyle(
+                    "-fx-background-color: #0284c7; " +
+                    "-fx-text-fill: white; " +
+                    "-fx-font-weight: bold; " +
+                    "-fx-font-size: 12px; " +
+                    "-fx-padding: 6px 16px; " +
+                    "-fx-border-radius: 8; " +
+                    "-fx-background-radius: 8; " +
+                    "-fx-cursor: hand;"
+                );
+                
+                inviteButton.setOnMouseEntered(e -> 
+                    inviteButton.setStyle(
+                        "-fx-background-color: #0ea5e9; " +
+                        "-fx-text-fill: white; " +
+                        "-fx-font-weight: bold; " +
+                        "-fx-font-size: 12px; " +
+                        "-fx-padding: 6px 16px; " +
+                        "-fx-border-radius: 8; " +
+                        "-fx-background-radius: 8; " +
+                        "-fx-cursor: hand;"
+                    )
+                );
+                
+                inviteButton.setOnMouseExited(e -> 
+                    inviteButton.setStyle(
+                        "-fx-background-color: #0284c7; " +
+                        "-fx-text-fill: white; " +
+                        "-fx-font-weight: bold; " +
+                        "-fx-font-size: 12px; " +
+                        "-fx-padding: 6px 16px; " +
+                        "-fx-border-radius: 8; " +
+                        "-fx-background-radius: 8; " +
+                        "-fx-cursor: hand;"
+                    )
+                );
+                
+                inviteButton.setOnAction(event -> {
+                    User user = getTableView().getItems().get(getIndex());
+                    if (user.getId() != client.getUser().getId()) {
+                        Message matchRequest = new Message("request_match", user.getId());
                         try {
                             client.sendMessage(matchRequest);
                         } catch (IOException ex) {
                             Logger.getLogger(MainController.class.getName()).log(Level.SEVERE, null, ex);
                         }
                     }
+                });
+            }
+            
+            @Override
+            protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty) {
+                    setGraphic(null);
+                } else {
+                    User user = getTableView().getItems().get(getIndex());
+                    // Disable nút nếu là chính mình hoặc người chơi offline/ingame
+                    if (user.getId() == client.getUser().getId()) {
+                        inviteButton.setDisable(true);
+                        inviteButton.setText("👤 Bạn");
+                        inviteButton.setStyle(
+                            "-fx-background-color: #e5e7eb; " +
+                            "-fx-text-fill: #9ca3af; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-font-size: 12px; " +
+                            "-fx-padding: 6px 16px; " +
+                            "-fx-border-radius: 8; " +
+                            "-fx-background-radius: 8;"
+                        );
+                    } else if (user.getStatus().equalsIgnoreCase("ingame")) {
+                        inviteButton.setDisable(true);
+                        inviteButton.setText("🎮 Đang chơi");
+                        inviteButton.setStyle(
+                            "-fx-background-color: #fef2f2; " +
+                            "-fx-text-fill: #dc2626; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-font-size: 11px; " +
+                            "-fx-padding: 6px 12px; " +
+                            "-fx-border-radius: 8; " +
+                            "-fx-background-radius: 8;"
+                        );
+                    } else if (user.getStatus().equalsIgnoreCase("offline")) {
+                        inviteButton.setDisable(true);
+                        inviteButton.setText("📴 Offline");
+                        inviteButton.setStyle(
+                            "-fx-background-color: #f3f4f6; " +
+                            "-fx-text-fill: #6b7280; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-font-size: 11px; " +
+                            "-fx-padding: 6px 12px; " +
+                            "-fx-border-radius: 8; " +
+                            "-fx-background-radius: 8;"
+                        );
+                    } else {
+                        inviteButton.setDisable(false);
+                        inviteButton.setText("🎮 Mời");
+                    }
+                    setGraphic(inviteButton);
+                    setStyle("-fx-alignment: center;");
                 }
-            });
-            return row;
+            }
         });
 
-        // Cấu hình bảng xếp hạng
+        // Cấu hình bảng xếp hạng với styling đặc biệt cho top 3
+        lbRankColumn.setCellFactory(column -> new TableCell<User, Integer>() {
+            @Override
+            protected void updateItem(Integer item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty) {
+                    setText(null);
+                    setGraphic(null);
+                    setStyle("");
+                } else {
+                    int rank = getIndex() + 1;
+                    Label rankLabel = new Label();
+                    
+                    // Styling cho top 3
+                    switch (rank) {
+                        case 1:
+                            rankLabel.setText("🥇 " + rank);
+                            rankLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; " +
+                                             "-fx-text-fill: #f59e0b; " +
+                                             "-fx-padding: 5px;");
+                            setStyle("-fx-background-color: #fffbeb;");
+                            break;
+                        case 2:
+                            rankLabel.setText("🥈 " + rank);
+                            rankLabel.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; " +
+                                             "-fx-text-fill: #94a3b8; " +
+                                             "-fx-padding: 5px;");
+                            setStyle("-fx-background-color: #f8fafc;");
+                            break;
+                        case 3:
+                            rankLabel.setText("🥉 " + rank);
+                            rankLabel.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; " +
+                                             "-fx-text-fill: #d97706; " +
+                                             "-fx-padding: 5px;");
+                            setStyle("-fx-background-color: #fef3c7;");
+                            break;
+                        default:
+                            rankLabel.setText(String.valueOf(rank));
+                            rankLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; " +
+                                             "-fx-text-fill: #64748b;");
+                            setStyle("");
+                            break;
+                    }
+                    setGraphic(rankLabel);
+                    setText(null);
+                }
+            }
+        });
+        
+        // Styling cho tên người chơi trong bảng xếp hạng
+        lbNameColumn.setCellFactory(column -> new TableCell<User, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setStyle("");
+                } else {
+                    setText(item);
+                    int rank = getIndex() + 1;
+                    if (rank <= 3) {
+                        setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
+                    } else {
+                        setStyle("-fx-font-size: 13px;");
+                    }
+                }
+            }
+        });
         lbNameColumn.setCellValueFactory(new PropertyValueFactory<>("username"));
+        
+        // Styling cho điểm trong bảng xếp hạng
+        lbPointsColumn.setCellFactory(column -> new TableCell<User, Integer>() {
+            @Override
+            protected void updateItem(Integer item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setStyle("");
+                } else {
+                    setText(item.toString());
+                    int rank = getIndex() + 1;
+                    if (rank <= 3) {
+                        setStyle("-fx-font-weight: bold; -fx-font-size: 14px; " +
+                               "-fx-text-fill: #0284c7; -fx-alignment: center;");
+                    } else {
+                        setStyle("-fx-font-size: 13px; -fx-alignment: center;");
+                    }
+                }
+            }
+        });
         lbPointsColumn.setCellValueFactory(new PropertyValueFactory<>("points"));
 
         // Cấu hình bảng lịch sử đấu
         roundColumn.setCellValueFactory(new PropertyValueFactory<>("round"));
+        
+        // Styling cho vai trò (Sút/Bắt)
+        roleColumn.setCellFactory(column -> new TableCell<MatchDetails, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                    setStyle("");
+                } else {
+                    Label roleLabel = new Label();
+                    if (item.equals("Sút")) {
+                        roleLabel.setText("⚽ " + item);
+                        roleLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #0ea5e9;");
+                    } else {
+                        roleLabel.setText("🛡️ " + item);
+                        roleLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #f59e0b;");
+                    }
+                    setGraphic(roleLabel);
+                    setText(null);
+                }
+            }
+        });
         roleColumn.setCellValueFactory(cellData -> {
             MatchDetails md = cellData.getValue();
             String role;
-            if (demRole % 2 == 0)
+            // Xác định role dựa trên vòng (round) và ID
+            // Vòng lẻ (1,3,5,7,9): Player1 sút, Player2 bắt
+            // Vòng chẵn (2,4,6,8,10): Player1 bắt, Player2 sút
+            if (md.getRound() % 2 == 1) {
+                // Vòng lẻ: shooter là người có ID nhỏ hơn (player1)
                 role = (md.getShooterId() == client.getUser().getId()) ? "Sút" : "Bắt";
-            else
-                role = (md.getShooterId() == client.getUser().getId()) ? "Bắt" : "Sút";
-            demRole += 1;
+            } else {
+                // Vòng chẵn: shooter là người có ID lớn hơn (player2)
+                role = (md.getShooterId() == client.getUser().getId()) ? "Sút" : "Bắt";
+            }
             return new SimpleStringProperty(role);
         });
+        
         directionColumn.setCellValueFactory(cellData -> {
             MatchDetails md = cellData.getValue();
             String direction = (md.getShooterId() == client.getUser().getId()) ? md.getShooterDirection()
                     : md.getGoalkeeperDirection();
             return new SimpleStringProperty(direction);
+        });
+        
+        // Styling cho kết quả (Win/Lose)
+        historyResultColumn.setCellFactory(column -> new TableCell<MatchDetails, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                    setStyle("");
+                } else {
+                    Label resultLabel = new Label();
+                    if (item.equalsIgnoreCase("win")) {
+                        resultLabel.setText("✅ THẮNG");
+                        resultLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #16a34a; " +
+                                           "-fx-padding: 4px 8px; -fx-background-color: #f0fdf4; " +
+                                           "-fx-background-radius: 5;");
+                    } else {
+                        resultLabel.setText("❌ THUA");
+                        resultLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #dc2626; " +
+                                           "-fx-padding: 4px 8px; -fx-background-color: #fef2f2; " +
+                                           "-fx-background-radius: 5;");
+                    }
+                    setGraphic(resultLabel);
+                    setText(null);
+                }
+            }
         });
         historyResultColumn.setCellValueFactory(cellData -> {
             MatchDetails md = cellData.getValue();
@@ -327,10 +594,44 @@ public class MainController {
 
         // Cấu hình bảng danh sách trận đấu
         matchIdColumn.setCellValueFactory(new PropertyValueFactory<>("id"));
+        
         opponentColumn.setCellValueFactory(cellData -> {
             Match match = cellData.getValue();
             String opponentName = match.getOpponentName(client.getUser().getId());
             return new SimpleStringProperty(opponentName);
+        });
+        
+        // Styling cho kết quả trận đấu
+        matchResultColumn.setCellFactory(column -> new TableCell<Match, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                    setStyle("");
+                } else {
+                    Label resultLabel = new Label();
+                    if (item.equalsIgnoreCase("win") || item.contains("Thắng")) {
+                        resultLabel.setText("🏆 THẮNG");
+                        resultLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: white; " +
+                                           "-fx-padding: 6px 12px; -fx-background-color: #16a34a; " +
+                                           "-fx-background-radius: 8;");
+                    } else if (item.equalsIgnoreCase("lose") || item.contains("Thua")) {
+                        resultLabel.setText("💔 THUA");
+                        resultLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: white; " +
+                                           "-fx-padding: 6px 12px; -fx-background-color: #dc2626; " +
+                                           "-fx-background-radius: 8;");
+                    } else {
+                        resultLabel.setText("⚖️ HÒA");
+                        resultLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: white; " +
+                                           "-fx-padding: 6px 12px; -fx-background-color: #64748b; " +
+                                           "-fx-background-radius: 8;");
+                    }
+                    setGraphic(resultLabel);
+                    setText(null);
+                }
+            }
         });
         matchResultColumn.setCellValueFactory(cellData -> {
             Match match = cellData.getValue();

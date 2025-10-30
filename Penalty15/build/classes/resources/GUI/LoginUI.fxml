@@ -3,15 +3,177 @@
 <?import javafx.geometry.*?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
+<?import javafx.scene.text.*?>
 
-<VBox alignment="CENTER" spacing="20.0" prefWidth="400" prefHeight="300" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1"
-      fx:controller="client.GUI.LoginController">
-    <padding>
-        <Insets top="20" right="20" bottom="20" left="20"/>
-    </padding>
-    <Label text="Đăng Nhập" style="-fx-font-size: 24px; -fx-text-fill: white;"/>
-    <TextField fx:id="usernameField" promptText="Tên đăng nhập" prefWidth="250"/>
-    <PasswordField fx:id="passwordField" promptText="Mật khẩu" prefWidth="250"/>
-    <Button text="Đăng nhập" onAction="#handleLogin" prefWidth="250"/>
-    <Label fx:id="errorLabel" textFill="red"/>
-</VBox>
+<BorderPane xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="client.GUI.LoginController"
+            style="-fx-background-color: #e0f2fe;">
+
+    <center>
+        <StackPane style="-fx-background-color: #e0f2fe;">
+            <ScrollPane fitToWidth="true" fitToHeight="true" 
+                       style="-fx-background: transparent; -fx-background-color: transparent;"
+                       hbarPolicy="NEVER" vbarPolicy="AS_NEEDED">
+                <StackPane>
+                    <VBox alignment="CENTER" spacing="0" style="-fx-padding: 40 20;">
+                    
+                        <!-- GAME TITLE WITH GLOW EFFECT -->
+                        <VBox alignment="CENTER" spacing="10" style="-fx-padding: 0 0 25 0;">
+                            <Label text="⚽ PENALTY SHOOTOUT" 
+                           style="-fx-font-size: 36px; 
+                                  -fx-font-weight: bold; 
+                                  -fx-text-fill: #0284c7;
+                                  -fx-effect: dropshadow(gaussian, rgba(2, 132, 199, 0.4), 15, 0.6, 0, 3);"/>
+                    
+                    <Label text="MULTIPLAYER FOOTBALL GAME" 
+                           style="-fx-font-size: 13px; 
+                                  -fx-font-weight: bold; 
+                                  -fx-text-fill: #f59e0b;
+                                  -fx-letter-spacing: 2px;"/>
+                </VBox>
+
+                <!-- LOGIN CARD -->
+                <VBox spacing="18" 
+                      style="-fx-background-color: white; 
+                             -fx-padding: 35px 40px; 
+                             -fx-background-radius: 20; 
+                             -fx-border-radius: 20;
+                             -fx-border-color: #0ea5e9;
+                             -fx-border-width: 2.5;
+                             -fx-effect: dropshadow(gaussian, rgba(14, 165, 233, 0.25), 20, 0.3, 0, 6);"
+                      maxWidth="420" 
+                      minWidth="320"
+                      alignment="CENTER">
+
+                <!-- CARD HEADER -->
+                <VBox alignment="CENTER" spacing="6">
+                    <Label text="🎮 ĐĂNG NHẬP" 
+                           style="-fx-font-size: 24px; 
+                                  -fx-font-weight: bold; 
+                                  -fx-text-fill: #0284c7;"/>
+                    <Label text="Nhập thông tin để bắt đầu chơi" 
+                           style="-fx-font-size: 12px; 
+                                  -fx-text-fill: #64748b;"/>
+                </VBox>
+
+                <Separator style="-fx-background-color: #e2e8f0; -fx-padding: 3 0;"/>
+
+                <!-- USERNAME FIELD -->
+                <VBox spacing="6">
+                    <Label text="👤 TÊN ĐĂNG NHẬP" 
+                           style="-fx-font-size: 11px; 
+                                  -fx-font-weight: bold; 
+                                  -fx-text-fill: #334155;"/>
+                    <TextField fx:id="usernameField" 
+                              promptText="Nhập tên người dùng..."
+                              style="-fx-background-color: #f8fafc; 
+                                     -fx-text-fill: #1e293b; 
+                                     -fx-prompt-text-fill: #94a3b8;
+                                     -fx-border-color: #cbd5e1; 
+                                     -fx-border-width: 2; 
+                                     -fx-border-radius: 10; 
+                                     -fx-background-radius: 10; 
+                                     -fx-padding: 12px 16px;
+                                     -fx-font-size: 13px;"/>
+                </VBox>
+
+                <!-- PASSWORD FIELD -->
+                <VBox spacing="6">
+                    <Label text="🔒 MẬT KHẨU" 
+                           style="-fx-font-size: 11px; 
+                                  -fx-font-weight: bold; 
+                                  -fx-text-fill: #334155;"/>
+                    <PasswordField fx:id="passwordField" 
+                                  promptText="Nhập mật khẩu..."
+                                  style="-fx-background-color: #f8fafc; 
+                                         -fx-text-fill: #1e293b; 
+                                         -fx-prompt-text-fill: #94a3b8;
+                                         -fx-border-color: #cbd5e1; 
+                                         -fx-border-width: 2; 
+                                         -fx-border-radius: 10; 
+                                         -fx-background-radius: 10; 
+                                         -fx-padding: 12px 16px;
+                                         -fx-font-size: 13px;"/>
+                </VBox>
+
+                <!-- ACTION BUTTONS -->
+                <VBox spacing="10" style="-fx-padding: 10 0 0 0;">
+                    <Button text="🚀 ĐĂNG NHẬP" 
+                           onAction="#handleLogin" 
+                           prefHeight="45"
+                           maxWidth="Infinity"
+                           style="-fx-background-color: #0284c7; 
+                                  -fx-text-fill: white; 
+                                  -fx-font-weight: bold; 
+                                  -fx-font-size: 14px;
+                                  -fx-border-radius: 12; 
+                                  -fx-background-radius: 12;
+                                  -fx-effect: dropshadow(gaussian, rgba(14, 165, 233, 0.4), 12, 0.4, 0, 4);">
+                        <cursor><javafx.scene.Cursor fx:constant="HAND" /></cursor>
+                    </Button>
+                </VBox>
+
+                <!-- ERROR MESSAGE -->
+                <Label fx:id="errorLabel" 
+                       text="" 
+                       style="-fx-font-size: 12px; 
+                              -fx-text-fill: #dc2626;
+                              -fx-font-weight: bold;
+                              -fx-alignment: center; 
+                              -fx-wrap-text: true;
+                              -fx-padding: 3 0 0 0;"/>
+
+                <!-- SEPARATOR -->
+                <Separator style="-fx-background-color: #e2e8f0; -fx-padding: 6 0;"/>
+
+                <!-- REGISTER LINK -->
+                <HBox spacing="6" alignment="CENTER">
+                    <Label text="Chưa có tài khoản?" 
+                           style="-fx-font-size: 12px; 
+                                  -fx-text-fill: #64748b;"/>
+                    <Hyperlink text="Đăng ký ngay" 
+                              fx:id="registerLink"
+                              onAction="#handleRegister"
+                              style="-fx-font-size: 12px; 
+                                     -fx-text-fill: #10b981;
+                                     -fx-font-weight: bold;
+                                     -fx-underline: true;">
+                        <cursor><javafx.scene.Cursor fx:constant="HAND" /></cursor>
+                    </Hyperlink>
+                </HBox>
+
+                <!-- FOOTER INFO -->
+                <Label text="🎯 Chọn đúng vị trí, ghi bàn thắng lợi!" 
+                       style="-fx-font-size: 11px; 
+                              -fx-text-fill: #64748b;
+                              -fx-font-style: italic;
+                              -fx-padding: 3 0 0 0;"/>
+            </VBox>
+
+            <!-- BOTTOM DECORATION -->
+            <HBox alignment="CENTER" spacing="12" style="-fx-padding: 20 0 15 0;" maxWidth="550">
+                <Label text="⚡" style="-fx-font-size: 16px;"/>
+                <Label text="FAST-PACED ACTION" 
+                       style="-fx-font-size: 10px; 
+                              -fx-font-weight: bold; 
+                              -fx-text-fill: #64748b;"/>
+                <Separator orientation="VERTICAL" prefHeight="12" style="-fx-background-color: #cbd5e1;"/>
+                <Label text="🏆" style="-fx-font-size: 16px;"/>
+                <Label text="COMPETITIVE GAMEPLAY" 
+                       style="-fx-font-size: 10px; 
+                              -fx-font-weight: bold; 
+                              -fx-text-fill: #64748b;"/>
+                <Separator orientation="VERTICAL" prefHeight="12" style="-fx-background-color: #cbd5e1;"/>
+                <Label text="🌐" style="-fx-font-size: 16px;"/>
+                <Label text="ONLINE MULTIPLAYER" 
+                       style="-fx-font-size: 10px; 
+                              -fx-font-weight: bold; 
+                              -fx-text-fill: #64748b;"/>
+            </HBox>
+                    </VBox>
+                </StackPane>
+            </ScrollPane>
+        </StackPane>
+    </center>
+
+</BorderPane>

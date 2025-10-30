@@ -10,6 +10,12 @@ public class ClientApp extends Application {
     @Override
     public void start(Stage primaryStage) {
         try {
+            // Thiết lập Stage trước khi tạo Client
+            primaryStage.setTitle("Penalty Shootout");
+            primaryStage.setResizable(true);
+            primaryStage.setMinWidth(1000);
+            primaryStage.setMinHeight(650);
+            
             Client client = new Client(primaryStage);
             client.showLoginUI();
 
@@ -31,10 +37,21 @@ public class ClientApp extends Application {
                         // Gửi yêu cầu đăng xuất trước khi đóng
                         Message logoutMessage = new Message("logout", client.getUser().getId());
                         client.sendMessage(logoutMessage);
+                        // Đợi một chút để message được gửi
+                        Thread.sleep(100);
                     }
-                    client.closeConnection();
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    // Bỏ qua lỗi khi gửi message - socket có thể đã đóng
+                    System.out.println("Không thể gửi logout message: " + e.getMessage());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    try {
+                        client.closeConnection();
+                    } catch (IOException e) {
+                        // Bỏ qua lỗi khi đóng connection
+                        System.out.println("Lỗi khi đóng kết nối: " + e.getMessage());
+                    }
                 }
             });
 
