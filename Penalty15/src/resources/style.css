@@ -1,0 +1,39 @@
+/* style.css */
+.root {
+    -fx-font-family: "Arial";
+    -fx-background-color: #2E8B57;
+}
+
+.label {
+    -fx-text-fill: white;
+}
+
+.button {
+    -fx-background-color: #3CB371;
+    -fx-text-fill: white;
+    -fx-font-size: 14px;
+}
+
+.table-view {
+    -fx-background-color: #FFFFFF; /* Đổi nền bảng thành trắng */
+}
+
+.text-field, .password-field {
+    -fx-background-color: #FFFFFF; /* Đổi nền trường nhập liệu thành trắng */
+}
+
+.tab-pane .tab-header-area {
+    -fx-background-color: #3CB371;
+}
+
+.tab-pane .tab-header-area .tab {
+    -fx-text-fill: white;
+}
+
+.menu-bar {
+    -fx-background-color: #3CB371;
+}
+
+.menu-bar .menu {
+    -fx-text-fill: white;
+}

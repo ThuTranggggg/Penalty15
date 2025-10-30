@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<BorderPane xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="client.GUI.MainController">
+    <top>
+        <MenuBar>
+            <Menu text="Menu">
+                <MenuItem text="Đăng xuất" onAction="#handleLogout"/>
+            </Menu>
+        </MenuBar>
+    </top>
+    <center>
+        <TabPane>
+            <Tab text="Danh Sách Người Chơi">
+                <VBox spacing="10">
+                    <padding>
+                        <Insets top="10" right="10" bottom="10" left="10"/>
+                    </padding>
+                    <HBox spacing="10">
+                        <TextField fx:id="searchField" promptText="Tìm kiếm theo tên"/>
+                        <Button text="Lọc Online" onAction="#handleFilterOnline"/>
+                        <Button text="Tìm" onAction="#handleSearch"/>
+                    </HBox>
+                    <TableView fx:id="usersTable">
+                        <columns>
+                            <TableColumn text="Tên" fx:id="nameColumn" prefWidth="150"/>
+                            <TableColumn text="Điểm" fx:id="pointsColumn" prefWidth="100"/>
+                            <TableColumn text="Trạng Thái" fx:id="statusColumn" prefWidth="100"/>
+                        </columns>
+                    </TableView>
+                </VBox>
+            </Tab>
+            <Tab text="Lịch Sử Đấu">
+                <Label text="Chức năng chưa được triển khai."/>
+            </Tab>
+            <Tab text="Bảng Xếp Hạng">
+                <Label text="Chức năng chưa được triển khai."/>
+            </Tab>
+        </TabPane>
+    </center>
+</BorderPane>
