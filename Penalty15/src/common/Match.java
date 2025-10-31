@@ -59,20 +59,22 @@ public Match(int id, int player1Id, int player2Id, Integer winnerId, String play
     }
 
     public String getResult(int userId) {
-        if (endReason != null && endReason.equals("player_quit")) {
-            if (winnerId == userId) {
-                return "Đối thủ đã thoát";
+        // Trường hợp người chơi thoát hoặc ngắt kết nối
+        if (endReason != null && (endReason.equals("player_quit") || endReason.equals("player_disconnect"))) {
+            if (winnerId != null && winnerId == userId) {
+                return "Thắng"; // Người còn lại thắng
             } else {
-                return "Bạn đã thoát";
+                return "Thua"; // Người thoát/mất kết nối thua
             }
+        }
+        
+        // Trường hợp bình thường
+        if (winnerId == null || winnerId == 0) {
+            return "Hòa"; // Không có người thắng = hòa
+        } else if (winnerId == userId) {
+            return "Thắng"; // userId là người thắng
         } else {
-            if (winnerId == null || winnerId == 0) {
-                return "Thắng";
-            } else if (winnerId == userId) {
-                return "Thắng";
-            } else {
-                return "Thua";
-            }
+            return "Thua"; // userId không phải người thắng
         }
     }
 

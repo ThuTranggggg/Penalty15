@@ -19,7 +19,7 @@ public class ClientApp extends Application {
             Client client = new Client(primaryStage);
             client.showLoginUI();
 
-            // Chạy kết nối server trên một luồn2g riêng để tránh làm đóng băng giao diện
+            // Chạy kết nối server trên một luồng riêng để tránh làm đóng băng giao diện
             new Thread(() -> {
                 try {
                     // Thay "localhost" bằng địa chỉ IP của server nếu cần

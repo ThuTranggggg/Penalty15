@@ -134,6 +134,14 @@ public class DatabaseManager {
         stmt.executeUpdate();
     }
 
+    // Cập nhật số trận thắng
+    public void updateUserWins(int userId) throws SQLException {
+        String query = "UPDATE users SET wins = wins + 1 WHERE id = ?";
+        PreparedStatement stmt = conn.prepareStatement(query);
+        stmt.setInt(1, userId);
+        stmt.executeUpdate();
+    }
+
     // Phương thức lưu chi tiết trận đấu
     public void saveMatchDetails(int matchId, int round, int shooterId, int goalkeeperId, String shooterDirection,
             String goalkeeperDirection, String result) throws SQLException {
@@ -201,7 +209,8 @@ public class DatabaseManager {
     // Các phương thức khác như lấy lịch sử đấu, bảng xếp hạng, v.v.
     public List<User> getLeaderboard() throws SQLException {
         List<User> users = new ArrayList<>();
-        String query = "SELECT * FROM users ORDER BY points DESC";
+        // Sắp xếp theo: 1. Tổng điểm (giảm dần), 2. Tổng trận thắng (giảm dần)
+        String query = "SELECT * FROM users ORDER BY points DESC, wins DESC";
         Statement stmt = conn.createStatement();
         ResultSet rs = stmt.executeQuery(query);
         while (rs.next()) {

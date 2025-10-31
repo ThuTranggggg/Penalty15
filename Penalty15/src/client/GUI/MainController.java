@@ -44,6 +44,8 @@ public class MainController {
     private TableColumn<User, Void> actionColumn;
     @FXML
     private Label statusLabel;
+    @FXML
+    private Label currentUserLabel;
 
     private Client client;
     private ObservableList<User> usersList = FXCollections.observableArrayList();
@@ -79,6 +81,12 @@ public class MainController {
 
     public void setClient(Client client) throws IOException {
         this.client = client;
+        
+        // Hiển thị tên người chơi
+        if (client.getUser() != null) {
+            currentUserLabel.setText("👤 " + client.getUser().getUsername());
+        }
+        
         loadUsers();
         loadLeaderboard();
         loadUserMatches(); // Tải danh sách trận đấu
@@ -133,6 +141,7 @@ public class MainController {
             }
         }
         usersTable.setItems(filtered);
+        usersTable.refresh();
     }
 
     @FXML
@@ -140,6 +149,7 @@ public class MainController {
         String keyword = searchField.getText().toLowerCase();
         if (keyword.isEmpty()) {
             usersTable.setItems(usersList);
+            usersTable.refresh();
             return;
         }
         ObservableList<User> filtered = FXCollections.observableArrayList();
@@ -149,6 +159,7 @@ public class MainController {
             }
         }
         usersTable.setItems(filtered);
+        usersTable.refresh();
     }
 
     // Cập nhật danh sách người chơi từ server
@@ -180,10 +191,10 @@ public class MainController {
     }
 
     // Hiển thị yêu cầu trận đấu
-    public void showMatchRequest(int requesterId) {
+    public void showMatchRequest(int requesterId, String requesterName) {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
         alert.setTitle("Yêu Cầu Trận Đấu");
-        alert.setHeaderText("Bạn nhận được yêu cầu trận đấu từ người chơi ID: " + requesterId);
+        alert.setHeaderText("Bạn nhận được yêu cầu trận đấu từ: " + requesterName);
         alert.setContentText("Bạn có muốn đồng ý?");
 
         alert.showAndWait().ifPresent(response -> {
@@ -349,7 +360,7 @@ public class MainController {
                         inviteButton.setText("👤 Bạn");
                         inviteButton.setStyle(
                             "-fx-background-color: #e5e7eb; " +
-                            "-fx-text-fill: #9ca3af; " +
+                            "-fx-text-fill: #6e82a5ff; " +
                             "-fx-font-weight: bold; " +
                             "-fx-font-size: 12px; " +
                             "-fx-padding: 6px 16px; " +
@@ -410,21 +421,21 @@ public class MainController {
                             rankLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; " +
                                              "-fx-text-fill: #f59e0b; " +
                                              "-fx-padding: 5px;");
-                            setStyle("-fx-background-color: #fffbeb;");
+                            setStyle("-fx-background-color: #ffe477ff;");
                             break;
                         case 2:
                             rankLabel.setText("🥈 " + rank);
                             rankLabel.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; " +
-                                             "-fx-text-fill: #94a3b8; " +
+                                             "-fx-text-fill: #57667aff; " +
                                              "-fx-padding: 5px;");
-                            setStyle("-fx-background-color: #f8fafc;");
+                            setStyle("-fx-background-color: #a4abb3ff;");
                             break;
                         case 3:
                             rankLabel.setText("🥉 " + rank);
                             rankLabel.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; " +
-                                             "-fx-text-fill: #d97706; " +
+                                             "-fx-text-fill: #795021ff; " +
                                              "-fx-padding: 5px;");
-                            setStyle("-fx-background-color: #fef3c7;");
+                            setStyle("-fx-background-color: #af9366ff;");
                             break;
                         default:
                             rankLabel.setText(String.valueOf(rank));
@@ -500,7 +511,7 @@ public class MainController {
                         roleLabel.setText("⚽ " + item);
                         roleLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #0ea5e9;");
                     } else {
-                        roleLabel.setText("🛡️ " + item);
+                        roleLabel.setText("🛡️" + item);
                         roleLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #f59e0b;");
                     }
                     setGraphic(roleLabel);
@@ -612,15 +623,20 @@ public class MainController {
                     setStyle("");
                 } else {
                     Label resultLabel = new Label();
-                    if (item.equalsIgnoreCase("win") || item.contains("Thắng")) {
+                    if (item.equalsIgnoreCase("win") || item.equalsIgnoreCase("Thắng")) {
                         resultLabel.setText("🏆 THẮNG");
                         resultLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: white; " +
                                            "-fx-padding: 6px 12px; -fx-background-color: #16a34a; " +
                                            "-fx-background-radius: 8;");
-                    } else if (item.equalsIgnoreCase("lose") || item.contains("Thua")) {
+                    } else if (item.equalsIgnoreCase("lose") || item.equalsIgnoreCase("Thua")) {
                         resultLabel.setText("💔 THUA");
                         resultLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: white; " +
                                            "-fx-padding: 6px 12px; -fx-background-color: #dc2626; " +
+                                           "-fx-background-radius: 8;");
+                    } else if (item.equalsIgnoreCase("draw") || item.equalsIgnoreCase("Hòa")) {
+                        resultLabel.setText("⚖️ HÒA");
+                        resultLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: white; " +
+                                           "-fx-padding: 6px 12px; -fx-background-color: #64748b; " +
                                            "-fx-background-radius: 8;");
                     } else {
                         resultLabel.setText("⚖️ HÒA");

@@ -93,7 +93,8 @@ Sau khi import database, bạn có thể dùng các tài khoản sau:
 - `username` - Tên đăng nhập (unique)
 - `password` - Mật khẩu
 - `points` - Điểm số
-- `status` - Trạng thái (online/offline)
+- `wins` - **Số trận thắng (MỚI)** ⭐
+- `status` - Trạng thái (online/offline/ingame)
 
 ### Table: matches
 - `id` - Primary key
@@ -129,14 +130,31 @@ Client 3 ─────┘
 
 ## 📝 Tính năng
 
-- ✅ Đăng nhập/Đăng xuất
+### ⚽ Gameplay
+- ✅ 10 lượt mỗi trận (5 lượt mỗi người)
+- ✅ Click chọn 1 trong 6 vị trí khung thành
+- ✅ Animation thủ môn bay người cản phá
+- ✅ Bóng bay thẳng đến vị trí chọn
+- ✅ Giới hạn thời gian 15s/lượt
+
+### 🏆 Điểm số & Xếp hạng
+- ✅ **Thắng:** +3 điểm, +1 trận thắng
+- ✅ **Hòa:** +1 điểm (cả hai)
+- ✅ **Thua:** +0 điểm
+- ✅ **Bảng xếp hạng:** Sắp xếp theo điểm → số trận thắng
+
+### 🎮 Tương tác
+- ✅ Đăng nhập/Đăng ký
 - ✅ Hiển thị danh sách người chơi online
 - ✅ Gửi lời mời đấu
-- ✅ Chơi game penalty real-time
-- ✅ Lưu lịch sử trận đấu
-- ✅ Bảng xếp hạng theo điểm
+- ✅ Chơi lại sau mỗi ván (cả hai phải đồng ý)
+- ✅ Thoát game (thông báo cho đối thủ)
+
+### 💾 Database
+- ✅ Lưu lịch sử mọi trận đấu
+- ✅ Lưu chi tiết từng lượt chơi
+- ✅ Xem bảng xếp hạng toàn hệ thống
 - ✅ Xem chi tiết trận đấu
-- ✅ Tự động cập nhật điểm số
 
 ## ⚠️ Lưu ý
 

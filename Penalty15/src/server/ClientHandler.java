@@ -58,17 +58,26 @@ public class ClientHandler implements Runnable {
                 System.out.println("🎮 Người chơi " + user.getUsername() + " đang trong game, xử lý disconnect...");
                 try {
                     gameRoom.handlePlayerDisconnect(this);
+                    // Đợi một chút để message được gửi đến người chơi còn lại
+                    Thread.sleep(500);
                 } catch (IOException | SQLException ex) {
                     System.err.println("❌ Lỗi xử lý disconnect trong GameRoom: " + ex.getMessage());
                     ex.printStackTrace();
+                } catch (InterruptedException ex) {
+                    System.err.println("❌ Lỗi sleep: " + ex.getMessage());
                 }
             }
         } finally {
             try {
                 if (user != null) {
                     System.out.println("🔄 Cleanup cho user: " + user.getUsername());
-                    dbManager.updateUserStatus(user.getId(), "offline");
-                    server.broadcast(new Message("status_update", user.getUsername() + " đã offline."));
+                    
+                    // Chỉ update status nếu KHÔNG còn trong game (đã được xử lý bởi GameRoom)
+                    if (gameRoom == null) {
+                        dbManager.updateUserStatus(user.getId(), "offline");
+                        server.broadcast(new Message("status_update", user.getUsername() + " đã offline."));
+                    }
+                    
                     server.removeClient(this);
                 }
                 if (socket != null && !socket.isClosed()) {
@@ -190,15 +199,44 @@ public class ClientHandler implements Runnable {
         Pair<User, Boolean> pairAuthnticatedUser = dbManager.authenticate(username, password);
         User _user = pairAuthnticatedUser.getKey();
         Boolean isOffline = pairAuthnticatedUser.getValue();
-        if (_user != null && isOffline == true) {
+        
+        if (_user != null) {
+            // Kiểm tra xem có client cũ đang giữ tài khoản này không
+            ClientHandler oldClient = server.getClientById(_user.getId());
+            
+            if (oldClient != null && !isOffline) {
+                // Có client cũ đang online, đá client cũ ra
+                System.out.println("⚠️ Tài khoản " + username + " đang được đăng nhập từ nơi khác. Đá client cũ.");
+                try {
+                    // Nếu client cũ đang trong game, xử lý disconnect trước
+                    if (oldClient.gameRoom != null) {
+                        System.out.println("⚠️ Client cũ đang trong game, xử lý disconnect...");
+                        try {
+                            oldClient.gameRoom.handlePlayerDisconnect(oldClient);
+                            Thread.sleep(300); // Đợi message gửi đi
+                        } catch (SQLException | InterruptedException e) {
+                            System.err.println("Lỗi xử lý disconnect cho client cũ: " + e.getMessage());
+                        }
+                    }
+                    
+                    oldClient.sendMessage(new Message("force_logout", "Tài khoản của bạn đã được đăng nhập từ nơi khác."));
+                    oldClient.isRunning = false;
+                    server.removeClient(oldClient);
+                    if (oldClient.socket != null && !oldClient.socket.isClosed()) {
+                        oldClient.socket.close();
+                    }
+                } catch (IOException e) {
+                    System.err.println("Lỗi khi đá client cũ: " + e.getMessage());
+                }
+            }
+            
+            // Cho phép đăng nhập mới
             this.user = _user;
             dbManager.updateUserStatus(user.getId(), "online");
             user.setStatus("online"); // Cập nhật trạng thái trong đối tượng user
             sendMessage(new Message("login_success", user));
             server.broadcast(new Message("status_update", user.getUsername() + " đã online."));
             server.addClient(user.getId(), this); // Thêm client vào danh sách server
-        } else if (_user != null && isOffline == false) {
-            sendMessage(new Message("login_failure", "Tài khoản được đăng nhập ở nơi khác"));
         } else {
             sendMessage(new Message("login_failure", "Tài khoản hoặc mật khẩu không đúng"));
         }
@@ -266,7 +304,9 @@ public class ClientHandler implements Runnable {
             System.out.println("Opponent found: " + opponent.getUser().getUsername() + " - Status: "
                     + opponent.getUser().getStatus());
             if (opponent.getUser().getStatus().equals("online")) {
-                opponent.sendMessage(new Message("match_request", user.getId()));
+                // Gửi thông tin người mời: ID|Username
+                String requestInfo = user.getId() + "|" + user.getUsername();
+                opponent.sendMessage(new Message("match_request", requestInfo));
                 System.out.println("Match request sent to " + opponent.getUser().getUsername());
             } else {
                 sendMessage(new Message("match_response", "Người chơi không sẵn sàng."));

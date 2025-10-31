@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
     username VARCHAR(50) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
     points INT DEFAULT 0,
+    wins INT DEFAULT 0,
     status VARCHAR(20) DEFAULT 'offline',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -57,11 +58,11 @@ CREATE TABLE IF NOT EXISTS match_details (
 -- THÊM DỮ LIỆU MẪU (Test accounts)
 -- ====================================
 -- Password cho tất cả là: 123456
-INSERT INTO users (username, password, points, status) VALUES
-('player1', '123456', 100, 'offline'),
-('player2', '123456', 80, 'offline'),
-('player3', '123456', 50, 'offline'),
-('admin', '123456', 200, 'offline');
+INSERT INTO users (username, password, points, wins, status) VALUES
+('player1', '123456', 100, 10, 'offline'),
+('player2', '123456', 80, 8, 'offline'),
+('player3', '123456', 50, 5, 'offline'),
+('admin', '123456', 200, 20, 'offline');
 
 -- ====================================
 -- HIỂN thị kết quả

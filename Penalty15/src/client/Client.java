@@ -29,6 +29,7 @@ public class Client {
     private ObjectInputStream in;
     private User user;
     private Stage primaryStage;
+    private volatile boolean isInGame = false; // Track nếu đang trong game
 
     // Controllers
     private LoginController loginController;
@@ -76,36 +77,79 @@ public class Client {
                     }
                 }
             } catch (java.io.EOFException ex) {
-                // EOFException xảy ra khi server đóng kết nối - đây là bình thường khi logout
+                // EOFException xảy ra khi server đóng kết nối
                 if (isRunning) {
                     System.out.println("Server đã đóng kết nối.");
-                    Platform.runLater(() -> {
-                        try {
-                            closeConnection();
-                            showLoginUI();
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                    });
+
+                    // Nếu đang trong game, cố gắng xử lý fallback: đưa người chơi về MainUI
+                    if (isInGame) {
+                        System.out.println("⚠️ Server đóng kết nối trong game - thực hiện fallback về MainUI");
+                        isInGame = false;
+                        // Đóng kết nối cục bộ và chuyển về MainUI mà KHÔNG gọi sendMessage
+                        Platform.runLater(() -> {
+                            showErrorAlert("Kết nối tới server đã bị gián đoạn trong trận đấu. Trở về giao diện chính.");
+                            try {
+                                closeConnection();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                            try {
+                                showMainUI();
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        });
+                    } else {
+                        // Chỉ logout khi KHÔNG trong game
+                        Platform.runLater(() -> {
+                            try {
+                                closeConnection();
+                                showLoginUI();
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        });
+                    }
                 } else {
                     System.out.println("Đã đóng kết nối, dừng luồng lắng nghe.");
                 }
             } catch (IOException | ClassNotFoundException ex) {
                 if (isRunning) {
                     System.err.println("Lỗi kết nối: " + ex.getMessage());
-                    try {
-                        closeConnection(); // Đóng kết nối hiện tại
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                    Platform.runLater(() -> {
-                        showErrorAlert("Kết nối tới server bị mất.");
+
+                    // Nếu đang trong game, xử lý fallback giống EOFException
+                    if (isInGame) {
+                        System.out.println("⚠️ Mất kết nối trong game - thực hiện fallback về MainUI");
+                        isInGame = false;
+                        Platform.runLater(() -> {
+                            showErrorAlert("Kết nối tới server bị mất trong trận đấu. Trở về giao diện chính.");
+                            try {
+                                closeConnection();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                            try {
+                                showMainUI();
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        });
+                    } else {
+                        // Chỉ khi KHÔNG trong game mới cleanup và về login
                         try {
-                            showLoginUI(); // Hiển thị giao diện đăng nhập và tái kết nối
-                        } catch (Exception e) {
+                            closeConnection(); // Đóng kết nối hiện tại
+                        } catch (IOException e) {
                             e.printStackTrace();
                         }
-                    });
+                        Platform.runLater(() -> {
+                            showErrorAlert("Kết nối tới server bị mất.");
+                            try {
+                                showLoginUI(); // Hiển thị giao diện đăng nhập và tái kết nối
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        });
+                    }
                 } else {
                     System.out.println("Đã đóng kết nối, dừng luồng lắng nghe.");
                 }
@@ -162,7 +206,12 @@ public class Client {
             case "match_request":
                 Platform.runLater(() -> {
                     if (mainController != null) {
-                        mainController.showMatchRequest((int) message.getContent());
+                        // Parse request info: ID|Username
+                        String requestInfo = (String) message.getContent();
+                        String[] parts = requestInfo.split("\\|");
+                        int requesterId = Integer.parseInt(parts[0]);
+                        String requesterName = parts.length > 1 ? parts[1] : "ID: " + requesterId;
+                        mainController.showMatchRequest(requesterId, requesterName);
                     }
                 });
                 break;
@@ -181,6 +230,7 @@ public class Client {
                 });
                 break;
             case "match_start":
+                isInGame = true; // Đánh dấu đang trong game
                 Platform.runLater(() -> {
                     showGameRoomUI((String) message.getContent());
                 });
@@ -205,16 +255,25 @@ public class Client {
                 });
                 break;
             case "match_end":
+                System.out.println("📨 Client nhận message: match_end");
+                isInGame = false; // Đánh dấu ra khỏi game
                 Platform.runLater(() -> {
                     if (gameRoomController != null) {
+                        System.out.println("✅ Gọi endMatch() với content: " + message.getContent());
                         gameRoomController.endMatch((String) message.getContent());
+                    } else {
+                        System.err.println("❌ gameRoomController is null!");
                     }
                 });
                 break;
             case "play_again_request":
+                System.out.println("📨 Client nhận message: play_again_request");
                 Platform.runLater(() -> {
                     if (gameRoomController != null) {
+                        System.out.println("✅ Gọi promptPlayAgain()");
                         gameRoomController.promptPlayAgain();
+                    } else {
+                        System.err.println("❌ gameRoomController is null!");
                     }
                 });
                 break;
@@ -278,9 +337,13 @@ public class Client {
                 });
                 break;
             case "match_result":
+                System.out.println("📨 Client nhận message: match_result = " + message.getContent());
                 Platform.runLater(() -> {
                     if (gameRoomController != null) {
+                        System.out.println("✅ Gọi showMatchResult()");
                         gameRoomController.showMatchResult((String) message.getContent());
+                    } else {
+                        System.err.println("❌ gameRoomController is null!");
                     }
                 });
                 break;
@@ -325,6 +388,18 @@ public class Client {
                     }
                 });
                 break;
+            
+            case "force_logout":
+                Platform.runLater(() -> {
+                    showErrorAlert((String) message.getContent());
+                    try {
+                        closeConnection();
+                        showLoginUI();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                });
+                break;
 
 
 
@@ -352,6 +427,8 @@ public class Client {
 
     public void showMainUI() {
         try {
+            isInGame = false; // Reset game state khi về main UI
+            
             System.out.println("Loading MainUI.fxml...");
             FXMLLoader loader = new FXMLLoader(MainController.class.getResource("/resources/GUI/MainUI.fxml"));
             Parent root = loader.load();
@@ -374,18 +451,17 @@ public class Client {
                 System.err.println("Cannot find CSS file: style.css");
             }
             
-            primaryStage.setScene(scene);
+            // Configure stage
             primaryStage.setTitle("Penalty Shootout - Main");
             primaryStage.setResizable(true);
             primaryStage.setMinWidth(1200);
             primaryStage.setMinHeight(700);
+            primaryStage.setScene(scene);
             
-            // Show window first
+            // Show then maximize
             if (!primaryStage.isShowing()) {
                 primaryStage.show();
             }
-            
-            // Then maximize after scene is rendered
             Platform.runLater(() -> {
                 primaryStage.setMaximized(true);
             });
@@ -397,8 +473,15 @@ public class Client {
         }
     }
 
+    // Utility for controllers to check connection state before attempting send
+    public boolean isConnected() {
+        return socket != null && !socket.isClosed() && out != null;
+    }
+
     public void showLoginUI() {
         try {
+            isInGame = false; // Reset game state khi về login UI
+            
             System.out.println("Loading LoginUI.fxml...");
             FXMLLoader loader = new FXMLLoader(LoginController.class.getResource("/resources/GUI/LoginUI.fxml"));
             Parent root = loader.load();
@@ -421,18 +504,17 @@ public class Client {
                 System.err.println("Cannot find CSS file: style.css");
             }
             
-            primaryStage.setScene(scene);
+            // Configure stage
             primaryStage.setTitle("Penalty Shootout - Login");
             primaryStage.setResizable(true);
             primaryStage.setMinWidth(1000);
             primaryStage.setMinHeight(650);
+            primaryStage.setScene(scene);
             
-            // Show window first
+            // Show then maximize
             if (!primaryStage.isShowing()) {
                 primaryStage.show();
             }
-            
-            // Then maximize after scene is rendered
             Platform.runLater(() -> {
                 primaryStage.setMaximized(true);
             });
@@ -483,18 +565,17 @@ public class Client {
                 System.err.println("Cannot find CSS file: style.css");
             }
             
-            primaryStage.setScene(scene);
+            // Configure stage
             primaryStage.setTitle("Penalty Shootout - Register");
             primaryStage.setResizable(true);
             primaryStage.setMinWidth(1000);
             primaryStage.setMinHeight(650);
+            primaryStage.setScene(scene);
             
-            // Show window first
+            // Show then maximize
             if (!primaryStage.isShowing()) {
                 primaryStage.show();
             }
-            
-            // Then maximize after scene is rendered
             Platform.runLater(() -> {
                 primaryStage.setMaximized(true);
             });
@@ -525,6 +606,18 @@ public class Client {
             }
 
             gameRoomController.setClient(this);
+            
+            // Parse opponent name from startMessage (format: "message|opponentName")
+            String opponentName = "Đối thủ";
+            if (startMessage.contains("|")) {
+                String[] parts = startMessage.split("\\|");
+                if (parts.length > 1) {
+                    opponentName = parts[1];
+                    startMessage = parts[0]; // Keep only the message part
+                }
+            }
+            gameRoomController.setOpponentName(opponentName);
+            
             Scene scene = new Scene(root);
 
             URL cssLocation = GameRoomController.class.getResource("/resources/GUI/style.css");
@@ -535,18 +628,17 @@ public class Client {
                 System.err.println("Cannot find CSS file: style.css");
             }
             
-            primaryStage.setScene(scene);
+            // Configure stage
             primaryStage.setTitle("Penalty Shootout - Game Room");
             primaryStage.setResizable(true);
             primaryStage.setMinWidth(1400);
             primaryStage.setMinHeight(800);
+            primaryStage.setScene(scene);
             
-            // Show window first
+            // Show then maximize
             if (!primaryStage.isShowing()) {
                 primaryStage.show();
             }
-            
-            // Then maximize after scene is rendered
             Platform.runLater(() -> {
                 primaryStage.setMaximized(true);
             });

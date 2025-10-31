@@ -110,7 +110,6 @@
                     <!-- Users Table -->
                     <TableView fx:id="usersTable" 
                               style="-fx-font-size: 13px; -fx-background-color: white;"
-                              prefHeight="600"
                               VBox.vgrow="ALWAYS">
                         <columns>
                             <TableColumn text="👤 Tên Người Chơi" fx:id="nameColumn" prefWidth="350" minWidth="250"/>
@@ -160,7 +159,6 @@
                                           -fx-text-fill: #0284c7;"/>
                             <TableView fx:id="matchesTable" 
                                       style="-fx-font-size: 13px; -fx-background-color: white;"
-                                      prefHeight="600"
                                       VBox.vgrow="ALWAYS">
                                 <columns>
                                     <TableColumn text="#️⃣ ID" fx:id="matchIdColumn" prefWidth="80" minWidth="60"/>
@@ -182,7 +180,6 @@
                                           -fx-text-fill: #0284c7;"/>
                             <TableView fx:id="historyTable" 
                                       style="-fx-font-size: 13px; -fx-background-color: white;"
-                                      prefHeight="600"
                                       VBox.vgrow="ALWAYS">
                                 <columns>
                                     <TableColumn text="🔢 Lượt" fx:id="roundColumn" prefWidth="80" minWidth="60"/>
@@ -224,7 +221,6 @@
                     <!-- Leaderboard Table -->
                     <TableView fx:id="leaderboardTable" 
                               style="-fx-font-size: 14px; -fx-background-color: white;"
-                              prefHeight="600"
                               VBox.vgrow="ALWAYS">
                         <columns>
                             <TableColumn fx:id="lbRankColumn" text="🏆 Hạng" prefWidth="150" minWidth="120"/>

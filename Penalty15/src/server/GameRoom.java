@@ -54,8 +54,8 @@ public class GameRoom {
 
             // Xác định vai trò cho vòng đầu tiên
             // Vòng lẻ (1,3,5,7,9): Player1 sút, Player2 bắt
-            String player1Message = "Trận đấu bắt đầu! Bạn là người sút vòng đầu.";
-            String player2Message = "Trận đấu bắt đầu! Bạn là người bắt vòng đầu.";
+            String player1Message = "Trận đấu bắt đầu! Bạn là người sút vòng đầu.|" + player2Handler.getUser().getUsername();
+            String player2Message = "Trận đấu bắt đầu! Bạn là người bắt vòng đầu.|" + player1Handler.getUser().getUsername();
             
             player1Handler.sendMessage(new Message("match_start", player1Message));
             player2Handler.sendMessage(new Message("match_start", player2Message));
@@ -174,9 +174,13 @@ public class GameRoom {
 
         // Tăng vòng
         currentRound++;
+        System.out.println("📊 Sau khi tăng vòng: currentRound = " + currentRound + ", MAX_ROUNDS = " + MAX_ROUNDS);
+        
         if (checkEndGame()) {
+            System.out.println("🏁 Trận đấu kết thúc! Gọi determineWinner()...");
             determineWinner();
         } else {
+            System.out.println("▶️ Chuyển sang vòng tiếp theo...");
             // Chuyển sang vòng tiếp theo
             shooterDirection = null;
             goalkeeperDirection = null;
@@ -187,32 +191,95 @@ public class GameRoom {
     }
 
     private void determineWinner() throws SQLException, IOException {
+        System.out.println("🏆 determineWinner được gọi - Round: " + currentRound + ", Score: " + player1Score + "-" + player2Score);
+        
         int winnerId = 0;
         String endReason = "normal";
 
         if (player1Score > player2Score) {
             winnerId = player1Handler.getUser().getId();
-            dbManager.updateUserPoints(winnerId, 3);
+            dbManager.updateUserPoints(winnerId, 3); // +3 điểm
+            dbManager.updateUserWins(winnerId); // +1 trận thắng
+            System.out.println("✅ Player1 thắng: " + player1Handler.getUser().getUsername());
         } else if (player2Score > player1Score) {
             winnerId = player2Handler.getUser().getId();
-            dbManager.updateUserPoints(winnerId, 3);
+            dbManager.updateUserPoints(winnerId, 3); // +3 điểm
+            dbManager.updateUserWins(winnerId); // +1 trận thắng
+            System.out.println("✅ Player2 thắng: " + player2Handler.getUser().getUsername());
         } else {
-            // Hòa: cả hai +1 điểm
+            // Hòa: cả hai +1 điểm, không tăng wins
             dbManager.updateUserPoints(player1Handler.getUser().getId(), 1);
             dbManager.updateUserPoints(player2Handler.getUser().getId(), 1);
+            System.out.println("✅ Hòa - cả hai được 1 điểm");
         }
 
         dbManager.updateMatchWinner(matchId, winnerId, endReason);
+        System.out.println("✅ Đã cập nhật database");
 
         // Thông báo kết quả cho cả hai người chơi
-        player1Handler.sendMessage(new Message("match_result", (player1Score > player2Score) ? "win" : "lose"));
-        player2Handler.sendMessage(new Message("match_result", (player2Score > player1Score) ? "win" : "lose"));
+        try {
+            player1Handler.sendMessage(new Message("match_result", (player1Score > player2Score) ? "win" : (player1Score < player2Score ? "lose" : "draw")));
+            System.out.println("✅ Đã gửi match_result cho Player1");
+        } catch (Exception e) {
+            System.err.println("❌ Lỗi gửi match_result cho Player1: " + e.getMessage());
+            e.printStackTrace();
+        }
+        
+        try {
+            player2Handler.sendMessage(new Message("match_result", (player2Score > player1Score) ? "win" : (player2Score < player1Score ? "lose" : "draw")));
+            System.out.println("✅ Đã gửi match_result cho Player2");
+        } catch (Exception e) {
+            System.err.println("❌ Lỗi gửi match_result cho Player2: " + e.getMessage());
+            e.printStackTrace();
+        }
 
-        // Tạo một ScheduledExecutorService để trì hoãn việc gửi tin nhắn
+        // Gửi message match_end với kết quả chi tiết
+        try {
+            String player1EndMessage = (player1Score > player2Score) ? 
+                "Chúc mừng! Bạn thắng với tỷ số " + player1Score + "-" + player2Score :
+                (player1Score < player2Score ? 
+                    "Bạn thua với tỷ số " + player1Score + "-" + player2Score :
+                    "Hòa với tỷ số " + player1Score + "-" + player2Score);
+            player1Handler.sendMessage(new Message("match_end", player1EndMessage));
+            System.out.println("✅ Đã gửi match_end cho Player1");
+        } catch (Exception e) {
+            System.err.println("❌ Lỗi gửi match_end cho Player1: " + e.getMessage());
+            e.printStackTrace();
+        }
+        
+        try {
+            String player2EndMessage = (player2Score > player1Score) ? 
+                "Chúc mừng! Bạn thắng với tỷ số " + player2Score + "-" + player1Score :
+                (player2Score < player1Score ? 
+                    "Bạn thua với tỷ số " + player2Score + "-" + player1Score :
+                    "Hòa với tỷ số " + player2Score + "-" + player1Score);
+            player2Handler.sendMessage(new Message("match_end", player2EndMessage));
+            System.out.println("✅ Đã gửi match_end cho Player2");
+        } catch (Exception e) {
+            System.err.println("❌ Lỗi gửi match_end cho Player2: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        // Tạo một ScheduledExecutorService để trì hoãn việc gửi tin nhắn play again
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
         scheduler.schedule(() -> {
-            player1Handler.sendMessage(new Message("play_again_request", "Bạn có muốn chơi lại không?"));
-            player2Handler.sendMessage(new Message("play_again_request", "Bạn có muốn chơi lại không?"));
+            try {
+                System.out.println("⏰ Gửi play_again_request sau 3 giây...");
+                player1Handler.sendMessage(new Message("play_again_request", "Bạn có muốn chơi lại không?"));
+                System.out.println("✅ Đã gửi play_again_request cho Player1");
+            } catch (Exception e) {
+                System.err.println("❌ Lỗi gửi play_again_request cho Player1: " + e.getMessage());
+                e.printStackTrace();
+            }
+            
+            try {
+                player2Handler.sendMessage(new Message("play_again_request", "Bạn có muốn chơi lại không?"));
+                System.out.println("✅ Đã gửi play_again_request cho Player2");
+            } catch (Exception e) {
+                System.err.println("❌ Lỗi gửi play_again_request cho Player2: " + e.getMessage());
+                e.printStackTrace();
+            }
+            
             scheduler.shutdown();
         }, 3, TimeUnit.SECONDS);
     }
@@ -323,6 +390,7 @@ public class GameRoom {
         // Cập nhật điểm và kết quả trận đấu
         try {
             dbManager.updateUserPoints(winnerId, 3); // Người thắng +3 điểm
+            dbManager.updateUserWins(winnerId); // Người thắng +1 trận thắng
             dbManager.updateMatchWinner(matchId, winnerId, endReason);
             System.out.println("✅ Đã cập nhật database - Người thắng: " + otherPlayer.getUser().getUsername());
         } catch (SQLException e) {
@@ -383,6 +451,10 @@ public class GameRoom {
     }
 
     public void handlePlayerQuit(ClientHandler quittingPlayer) throws SQLException, IOException {
+        System.out.println("🚪 handlePlayerQuit được gọi cho: " + 
+            (quittingPlayer != null && quittingPlayer.getUser() != null ? 
+                quittingPlayer.getUser().getUsername() : "Unknown"));
+        
         String resultMessageToLoser = "Bạn đã thoát. Bạn thua trận đấu!";
         String resultMessageToWinner = "Đối thủ đã thoát. Bạn thắng trận đấu!";
 
@@ -398,36 +470,65 @@ public class GameRoom {
 
         // Nếu không tìm thấy người chơi còn lại, thoát
         if (otherPlayer == null) {
+            System.out.println("⚠️ Không tìm thấy người chơi còn lại");
             return;
         }
+
+        System.out.println("✅ Người chơi còn lại: " + otherPlayer.getUser().getUsername());
 
         int winnerId = otherPlayer.getUser().getId();
 
         // Cập nhật điểm và kết quả trận đấu
-        dbManager.updateUserPoints(winnerId, 3); // Người thắng +3 điểm
-        dbManager.updateMatchWinner(matchId, winnerId, endReason);
+        try {
+            dbManager.updateUserPoints(winnerId, 3); // Người thắng +3 điểm
+            dbManager.updateUserWins(winnerId); // Người thắng +1 trận thắng
+            dbManager.updateMatchWinner(matchId, winnerId, endReason);
+            System.out.println("✅ Đã cập nhật database");
+        } catch (SQLException e) {
+            System.err.println("❌ Lỗi cập nhật database: " + e.getMessage());
+        }
 
         // Cập nhật status cả hai người chơi: "ingame" -> "online"
-        if (player1Handler != null && player1Handler.getUser() != null) {
-            player1Handler.getUser().setStatus("online");
-            dbManager.updateUserStatus(player1Handler.getUser().getId(), "online");
-            player1Handler.getServer()
-                    .broadcast(new Message("status_update", player1Handler.getUser().getUsername() + " is online"));
-        }
-        
-        if (player2Handler != null && player2Handler.getUser() != null) {
-            player2Handler.getUser().setStatus("online");
-            dbManager.updateUserStatus(player2Handler.getUser().getId(), "online");
-            player2Handler.getServer()
-                    .broadcast(new Message("status_update", player2Handler.getUser().getUsername() + " is online"));
+        try {
+            if (player1Handler != null && player1Handler.getUser() != null) {
+                player1Handler.getUser().setStatus("online");
+                dbManager.updateUserStatus(player1Handler.getUser().getId(), "online");
+                player1Handler.getServer()
+                        .broadcast(new Message("status_update", player1Handler.getUser().getUsername() + " is online"));
+            }
+            
+            if (player2Handler != null && player2Handler.getUser() != null) {
+                player2Handler.getUser().setStatus("online");
+                dbManager.updateUserStatus(player2Handler.getUser().getId(), "online");
+                player2Handler.getServer()
+                        .broadcast(new Message("status_update", player2Handler.getUser().getUsername() + " is online"));
+            }
+            System.out.println("✅ Đã cập nhật status -> online");
+        } catch (Exception e) {
+            System.err.println("❌ Lỗi cập nhật status: " + e.getMessage());
         }
 
-        // Gửi thông báo kết thúc trận đấu
-        quittingPlayer.sendMessage(new Message("match_result", "lose"));
-        quittingPlayer.sendMessage(new Message("match_end", resultMessageToLoser));
+        // Gửi thông báo kết thúc trận đấu cho người thoát
+        try {
+            quittingPlayer.sendMessage(new Message("match_result", "lose"));
+            System.out.println("✅ Đã gửi match_result=lose cho người thoát");
+            
+            quittingPlayer.sendMessage(new Message("match_end", resultMessageToLoser));
+            System.out.println("✅ Đã gửi match_end cho người thoát");
+        } catch (Exception e) {
+            System.err.println("❌ Lỗi gửi message cho người thoát: " + e.getMessage());
+        }
         
-        otherPlayer.sendMessage(new Message("match_result", "win"));
-        otherPlayer.sendMessage(new Message("match_end", resultMessageToWinner));
+        // Gửi thông báo cho người còn lại
+        try {
+            otherPlayer.sendMessage(new Message("match_result", "win"));
+            System.out.println("✅ Đã gửi match_result=win cho người thắng");
+            
+            otherPlayer.sendMessage(new Message("match_end", resultMessageToWinner));
+            System.out.println("✅ Đã gửi match_end cho người thắng");
+        } catch (Exception e) {
+            System.err.println("❌ Lỗi gửi message cho người thắng: " + e.getMessage());
+        }
 
         // Đặt lại trạng thái game room
         player1WantsRematch = null;
@@ -441,19 +542,27 @@ public class GameRoom {
         if (player2Handler != null) {
             player2Handler.clearGameRoom();
         }
+        
+        System.out.println("🏁 handlePlayerQuit hoàn tất");
     }
 
     public void startShooterTimeout() {
         try {
+            System.out.println("⏱️ startShooterTimeout - Round: " + currentRound);
+            
             if (checkEndGame()) {
+                System.out.println("🏁 Game đã kết thúc trong startShooterTimeout");
                 endMatch();
                 return;
             }
+            
             if (!shooterActionReceived) {
                 // Xác định ai là shooter trong vòng này
                 boolean isPlayer1Shooter = (currentRound % 2 == 1);
                 ClientHandler shooterHandler = isPlayer1Shooter ? player1Handler : player2Handler;
                 ClientHandler goalkeeperHandler = isPlayer1Shooter ? player2Handler : player1Handler;
+                
+                System.out.println("⏱️ Shooter timeout - tự động chọn vị trí 5");
                 
                 // Người sút không thực hiện hành động trong thời gian quy định
                 shooterDirection = "5"; // Vị trí 5 (center)
@@ -469,6 +578,7 @@ public class GameRoom {
                 goalkeeperActionReceived = false;
             }
         } catch (Exception e) {
+            System.err.println("❌ Lỗi trong startShooterTimeout: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -482,11 +592,15 @@ public class GameRoom {
 
     public void startGoalkeeperTimeout() {
         try {
+            System.out.println("⏱️ startGoalkeeperTimeout - Round: " + currentRound);
+            
             if (!goalkeeperActionReceived) {
                 // Xác định ai là goalkeeper trong vòng này
                 boolean isPlayer1Shooter = (currentRound % 2 == 1);
                 ClientHandler shooterHandler = isPlayer1Shooter ? player1Handler : player2Handler;
                 ClientHandler goalkeeperHandler = isPlayer1Shooter ? player2Handler : player1Handler;
+                
+                System.out.println("⏱️ Goalkeeper timeout - tự động chọn vị trí 5");
                 
                 // Người bắt không thực hiện hành động trong thời gian quy định
                 goalkeeperDirection = "5"; // Vị trí 5 (center)
@@ -501,6 +615,7 @@ public class GameRoom {
                 handleGoalkeeper(goalkeeperDirection, goalkeeperHandler);
             }
         } catch (Exception e) {
+            System.err.println("❌ Lỗi trong startGoalkeeperTimeout: " + e.getMessage());
             e.printStackTrace();
         }
     }

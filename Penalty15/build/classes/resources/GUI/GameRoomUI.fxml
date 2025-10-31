@@ -23,6 +23,30 @@
                           -fx-alignment: center;
                           -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 4, 0, 0, 2);"/>
             
+            <!-- Player Names -->
+            <HBox spacing="20" style="-fx-alignment: center; -fx-padding: 4 15;">
+                <Label fx:id="playerNameLabel" 
+                       text="👤 Bạn" 
+                       style="-fx-font-size: 13px; 
+                              -fx-font-weight: bold; 
+                              -fx-text-fill: white; 
+                              -fx-background-color: rgba(255, 255, 255, 0.15);
+                              -fx-padding: 6 15;
+                              -fx-background-radius: 8;"/>
+                <Label text="VS" 
+                       style="-fx-font-size: 13px; 
+                              -fx-font-weight: bold; 
+                              -fx-text-fill: #fbbf24;"/>
+                <Label fx:id="opponentNameLabel" 
+                       text="👤 Đối thủ" 
+                       style="-fx-font-size: 13px; 
+                              -fx-font-weight: bold; 
+                              -fx-text-fill: white; 
+                              -fx-background-color: rgba(255, 255, 255, 0.15);
+                              -fx-padding: 6 15;
+                              -fx-background-radius: 8;"/>
+            </HBox>
+            
             <!-- Score and Timer - Gaming Style -->
             <HBox spacing="25" style="-fx-alignment: center; -fx-padding: 6 15;">
                 <VBox spacing="3" style="-fx-alignment: center; -fx-padding: 8; -fx-background-color: rgba(255, 255, 255, 0.9); -fx-background-radius: 12; -fx-border-radius: 12; -fx-min-width: 120;">
@@ -61,11 +85,11 @@
 
     <!-- CENTER: GAME FIELD & CHAT -->
     <center>
-        <HBox spacing="20" style="-fx-padding: 20;" HBox.hgrow="ALWAYS">
+        <HBox spacing="20" style="-fx-padding: 20; -fx-alignment: center;" HBox.hgrow="ALWAYS">
             
             <!-- LEFT: GAME FIELD -->
             <VBox spacing="12" 
-                  style="-fx-alignment: top-center; 
+                  style="-fx-alignment: center; 
                          -fx-padding: 15;
                          -fx-background-color: white;
                          -fx-border-radius: 15;
@@ -74,9 +98,9 @@
                          -fx-border-width: 2;
                          -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.12), 12, 0, 0, 4);"
                   HBox.hgrow="ALWAYS" 
+                  VBox.vgrow="ALWAYS"
                   minWidth="450" 
-                  prefWidth="700"
-                  maxWidth="900">
+                  prefWidth="700">
                     
                     <!-- Instruction Label -->
                     <Label fx:id="instructionLabel"
@@ -94,7 +118,10 @@
                                   -fx-wrap-text: true;"/>
                     
                     <!-- GAME PANE WITH ZONES -->
-                    <StackPane minWidth="450" minHeight="400" prefWidth="650" prefHeight="550" maxWidth="850" maxHeight="700" VBox.vgrow="ALWAYS">
+                    <StackPane VBox.vgrow="ALWAYS" 
+                              minWidth="450" minHeight="400" 
+                              prefWidth="650" prefHeight="550" 
+                              style="-fx-alignment: center;">
                         <!-- Background Field - Drawn by Java -->
                         <Pane fx:id="gamePane" 
                               style="-fx-background-color: #16a34a; 
@@ -106,46 +133,9 @@
                               minWidth="450"
                               minHeight="400"
                               prefWidth="650" 
-                              prefHeight="550"
-                              maxWidth="850"
-                              maxHeight="700"/>
+                              prefHeight="550"/>
                         
-                        <!-- Interactive Zones Overlay - 6 zones (2 rows x 3 columns) -->
-                        <Pane style="-fx-background-color: transparent;" minWidth="450" minHeight="400" prefWidth="650" prefHeight="550" maxWidth="850" maxHeight="700" mouseTransparent="false">
-                            <!-- Top Row -->
-                            <!-- Zone 1: Top Left -->
-                            <Rectangle fx:id="zone1" 
-                                      layoutX="0" layoutY="0" width="166.67" height="75"
-                                      style="-fx-fill: transparent; -fx-stroke: transparent;"
-                                      onMouseClicked="#handleZoneClick"/>
-                            <!-- Zone 2: Top Center -->
-                            <Rectangle fx:id="zone2" 
-                                      layoutX="166.67" layoutY="0" width="166.67" height="75"
-                                      style="-fx-fill: transparent; -fx-stroke: transparent;"
-                                      onMouseClicked="#handleZoneClick"/>
-                            <!-- Zone 3: Top Right -->
-                            <Rectangle fx:id="zone3" 
-                                      layoutX="333.33" layoutY="0" width="166.67" height="75"
-                                      style="-fx-fill: transparent; -fx-stroke: transparent;"
-                                      onMouseClicked="#handleZoneClick"/>
-                            
-                            <!-- Bottom Row -->
-                            <!-- Zone 4: Bottom Left -->
-                            <Rectangle fx:id="zone4" 
-                                      layoutX="0" layoutY="75" width="166.67" height="75"
-                                      style="-fx-fill: transparent; -fx-stroke: transparent;"
-                                      onMouseClicked="#handleZoneClick"/>
-                            <!-- Zone 5: Bottom Center -->
-                            <Rectangle fx:id="zone5" 
-                                      layoutX="166.67" layoutY="75" width="166.67" height="75"
-                                      style="-fx-fill: transparent; -fx-stroke: transparent;"
-                                      onMouseClicked="#handleZoneClick"/>
-                            <!-- Zone 6: Bottom Right -->
-                            <Rectangle fx:id="zone6" 
-                                      layoutX="333.33" layoutY="75" width="166.67" height="75"
-                                      style="-fx-fill: transparent; -fx-stroke: transparent;"
-                                      onMouseClicked="#handleZoneClick"/>
-                        </Pane>
+                                          <!-- Interactive zones removed: using absolute overlays drawn on gamePane -->
                     </StackPane>
                 </VBox>
 
@@ -158,10 +148,10 @@
                          -fx-border-color: #e2e8f0;
                          -fx-border-width: 2;
                          -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.12), 12, 0, 0, 4);"
-                  minWidth="300" 
-                  prefWidth="380" 
-                  maxWidth="450"
-                  HBox.hgrow="SOMETIMES">
+                  minWidth="280" 
+                  prefWidth="350" 
+                  HBox.hgrow="SOMETIMES"
+                  VBox.vgrow="ALWAYS">
                 
                 <!-- MODE SELECTION -->
                 <VBox spacing="8" style="-fx-padding: 10; -fx-background-color: #f0f9ff; -fx-background-radius: 12; -fx-border-radius: 12; -fx-border-color: #0ea5e9; -fx-border-width: 1.5;">
