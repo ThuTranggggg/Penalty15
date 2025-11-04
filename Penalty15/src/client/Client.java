@@ -8,12 +8,14 @@ import common.Match;
 import common.MatchDetails;
 import common.Message;
 import common.User;
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 import javafx.scene.control.Alert;
+import javafx.util.Duration;
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
@@ -255,14 +257,32 @@ public class Client {
                 });
                 break;
             case "match_end":
-                System.out.println("📨 Client nhận message: match_end");
-                isInGame = false; // Đánh dấu ra khỏi game
+            case "game_over":
                 Platform.runLater(() -> {
                     if (gameRoomController != null) {
-                        System.out.println("✅ Gọi endMatch() với content: " + message.getContent());
-                        gameRoomController.endMatch((String) message.getContent());
-                    } else {
-                        System.err.println("❌ gameRoomController is null!");
+                        String endMessage = (String) message.getContent();
+                        // Check if this is final match end (from rematch declined or quit)
+                        if (endMessage != null && endMessage.contains("Trận đấu kết thúc")) {
+                            // This is final end - show message and return to main
+                            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                            alert.setTitle("Thông báo");
+                            alert.setHeaderText(null);
+                            alert.setContentText(endMessage);
+                            alert.showAndWait();
+                            
+                            PauseTransition delay = new PauseTransition(Duration.millis(500));
+                            delay.setOnFinished(e -> {
+                                try {
+                                    showMainUI();
+                                } catch (Exception ex) {
+                                    ex.printStackTrace();
+                                }
+                            });
+                            delay.play();
+                        } else {
+                            // This is match result after 10 rounds - just show result, wait for play_again_request
+                            gameRoomController.handleMatchEnd(endMessage);
+                        }
                     }
                 });
                 break;
@@ -280,7 +300,24 @@ public class Client {
             case "rematch_declined":
                 Platform.runLater(() -> {
                     if (gameRoomController != null) {
-                        gameRoomController.handleRematchDeclined((String) message.getContent());
+                        // Show declined message
+                        String declineMsg = (String) message.getContent();
+                        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                        alert.setTitle("Thông báo");
+                        alert.setHeaderText(null);
+                        alert.setContentText(declineMsg);
+                        alert.showAndWait();
+                        
+                        // Auto return to main screen after a short delay
+                        PauseTransition delay = new PauseTransition(Duration.millis(500));
+                        delay.setOnFinished(e -> {
+                            try {
+                                showMainUI();
+                            } catch (Exception ex) {
+                                ex.printStackTrace();
+                            }
+                        });
+                        delay.play();
                     }
                 });
                 break;
