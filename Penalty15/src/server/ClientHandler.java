@@ -20,6 +20,9 @@ public class ClientHandler implements Runnable {
     private User user;
     private GameRoom gameRoom;
     private volatile boolean isRunning = true;
+    // Synchronization for logout acknowledgement when server forces a client to logout
+    private final Object logoutAckLock = new Object();
+    private volatile boolean logoutAckReceived = false;
 
     public ClientHandler(Socket socket, Server server, DatabaseManager dbManager) {
         this.socket = socket;
@@ -91,6 +94,15 @@ public class ClientHandler implements Runnable {
     }
 
     private void handleMessage(Message message) throws IOException, SQLException {
+        // Special message to acknowledge server-initiated logout
+        if ("logout_ack".equals(message.getType())) {
+            // Notify any thread waiting for this ack
+            synchronized (logoutAckLock) {
+                logoutAckReceived = true;
+                logoutAckLock.notifyAll();
+            }
+            return;
+        }
         switch (message.getType()) {
             case "login":
                 handleLogin(message);
@@ -148,14 +160,75 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    private void handleHandleTimeout(Message message) throws IOException, SQLException {
-        if (gameRoom != null) {
-            if (message.getContent().equals("shooter")) {
-                gameRoom.startShooterTimeout();
-            } else if (message.getContent().equals("goalkeeper")) {
-                gameRoom.startGoalkeeperTimeout();
+    /**
+     * Wait for logout acknowledgement from the client side.
+     * @param timeoutMs maximum milliseconds to wait
+     * @return true if ack received within timeout, false otherwise
+     */
+    public boolean waitForLogoutAck(long timeoutMs) {
+        long end = System.currentTimeMillis() + timeoutMs;
+        synchronized (logoutAckLock) {
+            while (!logoutAckReceived) {
+                long now = System.currentTimeMillis();
+                long rem = end - now;
+                if (rem <= 0) break;
+                try {
+                    logoutAckLock.wait(rem);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
             }
+            boolean ret = logoutAckReceived;
+            // reset flag for future use
+            logoutAckReceived = false;
+            return ret;
         }
+    }
+
+//    private void handleHandleTimeout(Message message) throws IOException, SQLException {
+//        if (gameRoom == null) return;
+//
+//        Object content = message.getContent();
+//        // Backwards-compatible: clients may send a plain string "shooter"/"goalkeeper"
+//        if (content instanceof String) {
+//            String role = (String) content;
+//            if ("shooter".equals(role)) {
+//                gameRoom.startShooterTimeout();
+//            } else if ("goalkeeper".equals(role)) {
+//                gameRoom.startGoalkeeperTimeout();
+//            }
+//            return;
+//        }
+//
+//        // New format: Object[] { role:String, round: Integer }
+//        if (content instanceof Object[]) {
+//            Object[] arr = (Object[]) content;
+//            if (arr.length >= 2 && arr[0] instanceof String && arr[1] instanceof Integer) {
+//                String role = (String) arr[0];
+//                int msgRound = (Integer) arr[1];
+//                int serverRound = gameRoom.getCurrentRound();
+//                if (msgRound != serverRound) {
+//                    System.out.println("⚠️ Ignoring timeout from client for round " + msgRound + " (server at " + serverRound + ")");
+//                    return;
+//                }
+//                if ("shooter".equals(role)) {
+//                    gameRoom.startShooterTimeout();
+//                } else if ("goalkeeper".equals(role)) {
+//                    gameRoom.startGoalkeeperTimeout();
+//                }
+//            }
+//        }
+//    }
+    // server.ClientHandler.handleHandleTimeout()
+    private void handleHandleTimeout(Message message) throws IOException, SQLException {
+        if (gameRoom == null) return;
+
+        // Server Authority: Hoàn toàn bỏ qua yêu cầu timeout từ Client
+        // GameRoom đã có Server Scheduler (shooterTimeoutTask/goalkeeperTimeoutTask) 
+        // để xử lý timeout một cách đáng tin cậy. Việc kích hoạt từ Client dẫn đến lỗi trùng lặp.
+
+        System.out.println("⚠️ [TIMEOUT IGNORED] Đã nhận thông báo hết giờ từ client, nhưng Server sẽ tự xử lý bằng Timer nội bộ để đảm bảo đồng bộ.");
     }
 
     private void handleGetMatchDetails(Message message) throws IOException, SQLException {
@@ -219,11 +292,28 @@ public class ClientHandler implements Runnable {
                         }
                     }
                     
+                    // Gửi thông báo force_logout cho client cũ và chờ ACK từ client
+                    // để đóng kết nối một cách êm dịu.
                     oldClient.sendMessage(new Message("force_logout", "Tài khoản của bạn đã được đăng nhập từ nơi khác."));
                     oldClient.isRunning = false;
                     server.removeClient(oldClient);
+                    // Chờ tối đa 2000ms để nhận logout acknowledgement từ client
+                    boolean ack = oldClient.waitForLogoutAck(2000);
+                    if (!ack) {
+                        // Nếu không có ack, đợi một khoảng nhỏ như fallback
+                        try {
+                            Thread.sleep(300);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }
                     if (oldClient.socket != null && !oldClient.socket.isClosed()) {
-                        oldClient.socket.close();
+                        try {
+                            oldClient.socket.close();
+                        } catch (IOException ioe) {
+                            System.err.println("Lỗi khi đóng socket của client cũ: " + ioe.getMessage());
+                            ioe.printStackTrace();
+                        }
                     }
                 } catch (IOException e) {
                     System.err.println("Lỗi khi đá client cũ: " + e.getMessage());
@@ -354,40 +444,111 @@ public class ClientHandler implements Runnable {
 
     private void handleShoot(Message message) throws SQLException, IOException {
         if (gameRoom != null) {
-            String shooterDir = (String) message.getContent();
-            gameRoom.handleShot(shooterDir, this);
+            Object content = message.getContent();
+            // Backwards-compatible: content may be a plain String direction
+            if (content instanceof String) {
+                String shooterDir = (String) content;
+                gameRoom.handleShot(shooterDir, this);
+                return;
+            }
+            // New format: Object[] { direction:String, round: Integer }
+            if (content instanceof Object[]) {
+                Object[] arr = (Object[]) content;
+                if (arr.length >= 2 && arr[0] instanceof String && arr[1] instanceof Integer) {
+                    String shooterDir = (String) arr[0];
+                    int msgRound = (Integer) arr[1];
+                    int serverRound = gameRoom.getCurrentRound();
+                    if (msgRound != serverRound) {
+                        System.out.println("⚠️ Ignoring shoot action from client '" + (user!=null?user.getUsername():"unknown") + "' for round " + msgRound + " (server at " + serverRound + ")");
+                        return;
+                    }
+                    System.out.println("✅ Accepting shoot action from '" + (user!=null?user.getUsername():"unknown") + "' for round " + msgRound + ", dir=" + shooterDir);
+                    gameRoom.handleShot(shooterDir, this);
+                    return;
+                }
+            }
         }
     }
 
     private void handleGoalkeeper(Message message) throws SQLException, IOException {
         if (gameRoom != null) {
-            String goalkeeperDir = (String) message.getContent();
-            gameRoom.handleGoalkeeper(goalkeeperDir, this);
+            Object content = message.getContent();
+            // Backwards-compatible: content may be a plain String direction
+            if (content instanceof String) {
+                String goalkeeperDir = (String) content;
+                gameRoom.handleGoalkeeper(goalkeeperDir, this);
+                return;
+            }
+            // New format: Object[] { direction:String, round: Integer }
+            if (content instanceof Object[]) {
+                Object[] arr = (Object[]) content;
+                if (arr.length >= 2 && arr[0] instanceof String && arr[1] instanceof Integer) {
+                    String goalkeeperDir = (String) arr[0];
+                    int msgRound = (Integer) arr[1];
+                    int serverRound = gameRoom.getCurrentRound();
+                    if (msgRound != serverRound) {
+                        System.out.println("⚠️ Ignoring goalkeeper action from client '" + (user!=null?user.getUsername():"unknown") + "' for round " + msgRound + " (server at " + serverRound + ")");
+                        return;
+                    }
+                    System.out.println("✅ Accepting goalkeeper action from '" + (user!=null?user.getUsername():"unknown") + "' for round " + msgRound + ", dir=" + goalkeeperDir);
+                    gameRoom.handleGoalkeeper(goalkeeperDir, this);
+                    return;
+                }
+            }
         }
     }
 
     public void sendMessage(Message message) {
         try {
             if (socket != null && !socket.isClosed()) {
-                System.out.println("📤 Gửi message tới " + (user != null ? user.getUsername() : "client") + 
-                    ": type=" + message.getType() + ", content=" + message.getContent());
+                // Pretty-print common content shapes for clearer server logs
+                Object contentObj = message.getContent();
+                String contentStr;
+                if (contentObj instanceof int[]) {
+                    contentStr = java.util.Arrays.toString((int[]) contentObj);
+                } else if (contentObj instanceof Object[]) {
+                    contentStr = java.util.Arrays.toString((Object[]) contentObj);
+                } else if (contentObj instanceof java.util.Collection) {
+                    contentStr = contentObj.toString();
+                } else {
+                    contentStr = String.valueOf(contentObj);
+                }
+                System.out.println("📤 Gửi message tới " + (user != null ? user.getUsername() : "client") +
+                    ": type=" + message.getType() + ", content=" + contentStr);
                 out.writeObject(message);
                 out.flush();
                 System.out.println("✅ Message đã gửi thành công");
             } else {
-                System.out.println("⚠️ Socket đã đóng, không thể gửi tin nhắn tới " + 
+                System.out.println("⚠️ Socket đã đóng, không thể gửi tin nhắn tới " +
                     (user != null ? user.getUsername() : "client"));
             }
         } catch (IOException e) {
             System.err.println("❌ Lỗi khi gửi tin nhắn tới " + 
                 (user != null ? user.getUsername() : "client") + ": " + e.getMessage());
             e.printStackTrace();
-            // Không gọi lại handleLogout() ở đây để tránh đệ quy
-            // Đánh dấu client là đã ngắt kết nối
+            // Remove client from server so future broadcasts won't repeatedly try to send
             try {
-                socket.close();
+                server.removeClient(this);
+            } catch (Exception ex) {
+                System.err.println("❌ Lỗi khi removeClient sau send failure: " + ex.getMessage());
+            }
+            // Mark as not running and close socket
+            isRunning = false;
+            try {
+                if (socket != null && !socket.isClosed()) {
+                    socket.close();
+                }
             } catch (IOException ex) {
-                ex.printStackTrace();
+                System.err.println("❌ Lỗi khi đóng socket sau send failure: " + ex.getMessage());
+            }
+
+            // If this client was in a game, notify the GameRoom to handle the disconnect
+            if (gameRoom != null) {
+                try {
+                    gameRoom.handlePlayerDisconnect(this);
+                } catch (Exception ex) {
+                    System.err.println("❌ Lỗi khi thông báo GameRoom về disconnect: " + ex.getMessage());
+                }
             }
         }
     }

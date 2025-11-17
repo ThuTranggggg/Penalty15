@@ -109,6 +109,9 @@ public class GameRoomController {
     private String yourRole = "";
     private boolean isMyTurn = false;
     private String waitingForOpponentAction = "";
+    private int clientCurrentRound = 1;
+    // Last applied turn sequence to prevent stale turn messages
+    private int lastAppliedTurnSeq = 0;
 
     // Goal / layout computed values (updated on drawField)
     private double goalLeftX = 0;
@@ -142,17 +145,27 @@ public class GameRoomController {
         if (!actionPerformed && !currentMode.isEmpty()) {
             Rectangle clickedZone = (Rectangle) event.getSource();
             String direction = getDirectionFromZone(clickedZone);
-            
-            // Send action to server
-            Message message;
-            if (currentMode.equals("shoot")) {
-                message = new Message("shoot", direction);
-                System.out.println("Shot direction: " + direction);
-            } else {
-                message = new Message("goalkeeper", direction);
-                System.out.println("Goalkeeper direction: " + direction);
+            if (direction == null) {
+                // Ignore clicks that cannot be mapped to a direction
+                return;
             }
             
+            // Send action to server; include current client round id to avoid stale processing on server
+            if (clientCurrentRound <= 0) {
+                System.out.println("⚠️ Không có thông tin vòng hiện tại trên client, bỏ qua gửi hành động.");
+                return;
+            }
+
+            Message message;
+            if (currentMode.equals("shoot")) {
+                // New payload: Object[]{ direction:String, round: Integer }
+                message = new Message("shoot", new Object[]{ direction, clientCurrentRound });
+                System.out.println("Shot direction: " + direction + ", round=" + clientCurrentRound);
+            } else {
+                message = new Message("goalkeeper", new Object[]{ direction, clientCurrentRound });
+                System.out.println("Goalkeeper direction: " + direction + ", round=" + clientCurrentRound);
+            }
+
             try {
                 client.sendMessage(message);
                 actionPerformed = true;
@@ -227,7 +240,8 @@ public class GameRoomController {
         if (zone == zone4) return "4"; // Bottom Left
         if (zone == zone5) return "5"; // Bottom Center
         if (zone == zone6) return "6"; // Bottom Right
-        return "5"; // Default to center
+        // No default selection: return null so caller won't auto-send a choice
+        return null;
     }
     
     @FXML
@@ -276,8 +290,12 @@ public class GameRoomController {
         shootModeButton.setDisable(true);
         goalkeeperModeButton.setDisable(true);
         enableZones(false);
-        instructionLabel.setText("⏳ Đã gửi lựa chọn! Đang chờ đối thủ...");
-        instructionLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #999; -fx-alignment: center; -fx-padding: 8; -fx-background-color: #f5f5f5; -fx-background-radius: 10; -fx-border-radius: 10;");
+        // Only show the "sent choice" message for the player who acted.
+        // Avoid overwriting observer's instruction label (e.g., "Đối thủ đang sút...")
+        if (isMyTurn) {
+            instructionLabel.setText("⏳ Đã gửi lựa chọn! Đang chờ đối thủ...");
+            instructionLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #999; -fx-alignment: center; -fx-padding: 8; -fx-background-color: #f5f5f5; -fx-background-radius: 10; -fx-border-radius: 10;");
+        }
     }
 
     public void updateScore(int[] scores) {
@@ -285,6 +303,8 @@ public class GameRoomController {
             int yourScore = scores[0];
             int opponentScore = scores[1];
             int currentRound = scores[2];
+            // keep client-side copy of current round for timeout messages
+            clientCurrentRound = currentRound;
             scoreLabel.setText(yourScore + " - " + opponentScore);
             
             // Cập nhật hiển thị vòng hiện tại
@@ -1098,20 +1118,56 @@ public class GameRoomController {
     }
     
     public void promptYourTurn(int duration) {
+        // Backwards-compatible: treat as shooter turn
+        promptYourTurn(duration, "shooter", clientCurrentRound);
+    }
+
+    // New API: promptYourTurn with role and round so UI can show accurate role and validate round
+    // New API: promptYourTurn with role, round and sequence so UI can show accurate role and validate staleness
+    public void promptYourTurn(int duration, String role, int round, int seq) {
         Platform.runLater(() -> {
+            System.out.println("📨 promptYourTurn received: role=" + role + ", round=" + round + ", seq=" + seq + ", clientCurrentRound(before)=" + clientCurrentRound + ", lastAppliedSeq=" + lastAppliedTurnSeq);
+            // Ignore out-of-order/old messages by sequence first
+            if (seq > 0 && seq <= lastAppliedTurnSeq) {
+                System.out.println("⚠️ Ignoring your_turn for stale seq=" + seq + " lastApplied=" + lastAppliedTurnSeq);
+                return;
+            }
+            // Also ignore by round if older
+            if (round < clientCurrentRound) {
+                System.out.println("⚠️ Ignoring your_turn for old round=" + round + " currentClientRound=" + clientCurrentRound);
+                return;
+            }
+            // Accept this turn
+            if (seq > 0) lastAppliedTurnSeq = seq;
+            clientCurrentRound = round;
+            this.yourRole = role;
             // Disable both buttons - auto-selected, no need to click
             shootModeButton.setDisable(true);
             goalkeeperModeButton.setDisable(true);
             actionPerformed = false;
             startCountdown(duration);
-            // Auto-select shoot mode
-            currentMode = "shoot";
-            shootModeButton.setSelected(true);
-            goalkeeperModeButton.setSelected(false);
+            // Set currentMode and select appropriate toggle based on role
+            if ("shooter".equalsIgnoreCase(role)) {
+                currentMode = "shoot";
+                shootModeButton.setSelected(true);
+                goalkeeperModeButton.setSelected(false);
+                instructionLabel.setText("🎯 ĐẾN LƯỢT BẠN SÚT! Nhấp vào khung thành để chọn vị trí");
+                instructionLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #4ecca3; -fx-alignment: center; -fx-padding: 8; -fx-background-color: #e8fff6; -fx-background-radius: 10; -fx-border-radius: 10;");
+            } else {
+                currentMode = "goalkeeper";
+                goalkeeperModeButton.setSelected(true);
+                shootModeButton.setSelected(false);
+                instructionLabel.setText("🛡️ ĐẾN LƯỢT BẠN CHẶN! Nhấp vào khung thành để chọn vị trí");
+                instructionLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #ffd93d; -fx-alignment: center; -fx-padding: 8; -fx-background-color: #fffbeb; -fx-background-radius: 10; -fx-border-radius: 10;");
+            }
             enableZones(true);
-            instructionLabel.setText("🎯 ĐẾN LƯỢT BẠN SÚT! Nhấp vào khung thành để chọn vị trí");
-            instructionLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #4ecca3; -fx-alignment: center; -fx-padding: 8; -fx-background-color: #e8fff6; -fx-background-radius: 10; -fx-border-radius: 10;");
+            isMyTurn = true;
         });
+    }
+
+    // Backwards-compatible overload for older calls without seq
+    public void promptYourTurn(int duration, String role, int round) {
+        promptYourTurn(duration, role, round, -1);
     }
     
     public void promptGoalkeeperTurn(int duration) {
@@ -1132,24 +1188,74 @@ public class GameRoomController {
     }
     
     public void handleOpponentTurn(int duration) {
+        // Backwards-compatible: no role/round info
+        handleOpponentTurn(duration, "opponent", clientCurrentRound);
+    }
+
+    // New API: handle opponent's turn with role and round info
+    // New API: handle opponent's turn with role, round and sequence
+    public void handleOpponentTurn(int duration, String role, int round, int seq) {
         Platform.runLater(() -> {
+            System.out.println("📨 handleOpponentTurn received: role=" + role + ", round=" + round + ", seq=" + seq + ", clientCurrentRound(before)=" + clientCurrentRound + ", lastAppliedSeq=" + lastAppliedTurnSeq);
             shootModeButton.setDisable(true);
             goalkeeperModeButton.setDisable(true);
+            // Ignore stale by sequence
+            if (seq > 0 && seq <= lastAppliedTurnSeq) {
+                System.out.println("⚠️ Ignoring opponent_turn for stale seq=" + seq + " lastApplied=" + lastAppliedTurnSeq);
+                return;
+            }
+            // Also ignore out-of-order/old messages by round
+            if (round < clientCurrentRound) {
+                System.out.println("⚠️ Ignoring opponent_turn for old round=" + round + " currentClientRound=" + clientCurrentRound + " role=" + role);
+                return;
+            }
+            // Accept
+            if (seq > 0) lastAppliedTurnSeq = seq;
+            clientCurrentRound = round;
+            // Clear currentMode so the client does NOT auto-send a timeout while observing opponent
+            currentMode = "";
             startCountdown(duration);
-            instructionLabel.setText("⏳ Đối thủ đang thực hiện...");
+            // Show who is performing the action for better UX
+            if ("shooter".equalsIgnoreCase(role)) {
+                instructionLabel.setText("⏳ Đối thủ đang sút...");
+            } else if ("goalkeeper".equalsIgnoreCase(role)) {
+                instructionLabel.setText("⏳ Đối thủ đang chặn...");
+            } else {
+                instructionLabel.setText("⏳ Đối thủ đang thực hiện...");
+            }
             instructionLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #999; -fx-alignment: center; -fx-padding: 8; -fx-background-color: #f5f5f5; -fx-background-radius: 10; -fx-border-radius: 10;");
+            isMyTurn = false;
         });
+    }
+
+    // Backwards-compatible overload
+    public void handleOpponentTurn(int duration, String role, int round) {
+        handleOpponentTurn(duration, role, round, -1);
     }
     
     public void handleTimeout(String message) {
         Platform.runLater(() -> {
+            // Show a transient alert but DO NOT overwrite the opponent/turn instruction label.
+            // The server will send the next round's `your_turn`/`opponent_turn` messages
+            // which will correctly update the UI. Here we only stop timers and mark
+            // that the local player is no longer on-turn.
+            if (countdownTimeline != null) {
+                countdownTimeline.stop();
+            }
+            actionPerformed = true;
+            isMyTurn = false;
             showAlert("Hết giờ", message, AlertType.WARNING);
-            disableModes();
         });
     }
     
     public void handleOpponentTimeout(String message) {
         Platform.runLater(() -> {
+            // Informational only. Do not change the instruction label here.
+            if (countdownTimeline != null) {
+                countdownTimeline.stop();
+            }
+            isMyTurn = false;
+            actionPerformed = true;
             showAlert("Thông báo", message, AlertType.INFORMATION);
         });
     }
@@ -1160,16 +1266,17 @@ public class GameRoomController {
         });
     }
     
+// client.GUI.GameRoomController.startCountdown()
     private void startCountdown(int seconds) {
         if (countdownTimeline != null) {
             countdownTimeline.stop();
         }
-        
+
         timeRemaining = seconds;
         if (timerLabel != null) {
             timerLabel.setText(String.valueOf(timeRemaining));
         }
-        
+
         countdownTimeline = new Timeline(
             new KeyFrame(Duration.seconds(1), e -> {
                 timeRemaining--;
@@ -1178,13 +1285,20 @@ public class GameRoomController {
                 }
                 if (timeRemaining <= 0) {
                     countdownTimeline.stop();
+
+                    // === LOGIC ĐÃ ĐƯỢC BỎ: KHÔNG GỬI MESSAGE "timeout" LÊN SERVER ===
+                    if (!actionPerformed) {
+                        // Cập nhật UI cục bộ để hiển thị trạng thái chờ Server xử lý
+                        disableModes();
+                        actionPerformed = true;
+                    }
                 }
             })
         );
         countdownTimeline.setCycleCount(seconds);
         countdownTimeline.play();
-    }
-    
+    } 
+
     private void showAlert(String title, String content, AlertType type) {
         Alert alert = new Alert(type);
         alert.setTitle(title);
@@ -1195,11 +1309,36 @@ public class GameRoomController {
 
     @FXML
     private void handleSendChat() {
-        // ...existing code...
+        try {
+            String text = chatInput.getText();
+            if (text == null || text.trim().isEmpty()) return;
+            Message message = new Message("chat", text.trim());
+            client.sendMessage(message);
+            chatInput.clear();
+        } catch (IOException e) {
+            e.printStackTrace();
+            showAlert("Lỗi", "Không thể gửi tin nhắn. Vui lòng kiểm tra kết nối.", AlertType.ERROR);
+        }
     }
 
     @FXML
     private void handleQuitGame() {
-        // ...existing code...
+        // Gửi yêu cầu thoát trận đấu tới server và về giao diện chính
+        try {
+            client.sendMessage(new Message("quit_game", null));
+        } catch (IOException e) {
+            System.err.println("Lỗi khi gửi quit_game: " + e.getMessage());
+        }
+        // // Đóng connection cục bộ cho an toàn và về main UI
+        // try {
+        //     client.closeConnection();
+        // } catch (IOException e) {
+        //     // ignore
+        // }
+        try {
+            client.showMainUI();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }

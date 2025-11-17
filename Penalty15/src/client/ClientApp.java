@@ -23,6 +23,7 @@ public class ClientApp extends Application {
             new Thread(() -> {
                 try {
                     // Thay "localhost" bằng địa chỉ IP của server nếu cần
+                    // Use port 12345 to match other reconnects in the client
                     client.startConnection("localhost", 12345);
                 } catch (Exception e) {
                     e.printStackTrace();
