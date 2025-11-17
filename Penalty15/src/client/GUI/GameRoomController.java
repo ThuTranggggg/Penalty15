@@ -110,6 +110,8 @@ public class GameRoomController {
     private boolean isMyTurn = false;
     private String waitingForOpponentAction = "";
     private int clientCurrentRound = 1;
+    // Last applied turn sequence to prevent stale turn messages
+    private int lastAppliedTurnSeq = 0;
 
     // Goal / layout computed values (updated on drawField)
     private double goalLeftX = 0;
@@ -1121,15 +1123,22 @@ public class GameRoomController {
     }
 
     // New API: promptYourTurn with role and round so UI can show accurate role and validate round
-    public void promptYourTurn(int duration, String role, int round) {
+    // New API: promptYourTurn with role, round and sequence so UI can show accurate role and validate staleness
+    public void promptYourTurn(int duration, String role, int round, int seq) {
         Platform.runLater(() -> {
-            System.out.println("📨 promptYourTurn received: role=" + role + ", round=" + round + ", clientCurrentRound(before)=" + clientCurrentRound);
-            // Ignore out-of-order/old messages
+            System.out.println("📨 promptYourTurn received: role=" + role + ", round=" + round + ", seq=" + seq + ", clientCurrentRound(before)=" + clientCurrentRound + ", lastAppliedSeq=" + lastAppliedTurnSeq);
+            // Ignore out-of-order/old messages by sequence first
+            if (seq > 0 && seq <= lastAppliedTurnSeq) {
+                System.out.println("⚠️ Ignoring your_turn for stale seq=" + seq + " lastApplied=" + lastAppliedTurnSeq);
+                return;
+            }
+            // Also ignore by round if older
             if (round < clientCurrentRound) {
                 System.out.println("⚠️ Ignoring your_turn for old round=" + round + " currentClientRound=" + clientCurrentRound);
                 return;
             }
-            // Update client-side current round
+            // Accept this turn
+            if (seq > 0) lastAppliedTurnSeq = seq;
             clientCurrentRound = round;
             this.yourRole = role;
             // Disable both buttons - auto-selected, no need to click
@@ -1155,6 +1164,11 @@ public class GameRoomController {
             isMyTurn = true;
         });
     }
+
+    // Backwards-compatible overload for older calls without seq
+    public void promptYourTurn(int duration, String role, int round) {
+        promptYourTurn(duration, role, round, -1);
+    }
     
     public void promptGoalkeeperTurn(int duration) {
         Platform.runLater(() -> {
@@ -1179,17 +1193,24 @@ public class GameRoomController {
     }
 
     // New API: handle opponent's turn with role and round info
-    public void handleOpponentTurn(int duration, String role, int round) {
+    // New API: handle opponent's turn with role, round and sequence
+    public void handleOpponentTurn(int duration, String role, int round, int seq) {
         Platform.runLater(() -> {
-            System.out.println("📨 handleOpponentTurn received: role=" + role + ", round=" + round + ", clientCurrentRound(before)=" + clientCurrentRound);
+            System.out.println("📨 handleOpponentTurn received: role=" + role + ", round=" + round + ", seq=" + seq + ", clientCurrentRound(before)=" + clientCurrentRound + ", lastAppliedSeq=" + lastAppliedTurnSeq);
             shootModeButton.setDisable(true);
             goalkeeperModeButton.setDisable(true);
-            // Ignore out-of-order/old messages
+            // Ignore stale by sequence
+            if (seq > 0 && seq <= lastAppliedTurnSeq) {
+                System.out.println("⚠️ Ignoring opponent_turn for stale seq=" + seq + " lastApplied=" + lastAppliedTurnSeq);
+                return;
+            }
+            // Also ignore out-of-order/old messages by round
             if (round < clientCurrentRound) {
                 System.out.println("⚠️ Ignoring opponent_turn for old round=" + round + " currentClientRound=" + clientCurrentRound + " role=" + role);
                 return;
             }
-            // Update current round so client knows which round is active
+            // Accept
+            if (seq > 0) lastAppliedTurnSeq = seq;
             clientCurrentRound = round;
             // Clear currentMode so the client does NOT auto-send a timeout while observing opponent
             currentMode = "";
@@ -1205,6 +1226,11 @@ public class GameRoomController {
             instructionLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #999; -fx-alignment: center; -fx-padding: 8; -fx-background-color: #f5f5f5; -fx-background-radius: 10; -fx-border-radius: 10;");
             isMyTurn = false;
         });
+    }
+
+    // Backwards-compatible overload
+    public void handleOpponentTurn(int duration, String role, int round) {
+        handleOpponentTurn(duration, role, round, -1);
     }
     
     public void handleTimeout(String message) {

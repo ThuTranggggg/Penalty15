@@ -405,13 +405,15 @@ public class Client {
                     String role = arr.length > 0 && arr[0] instanceof String ? (String) arr[0] : "shooter";
                     int dur = arr.length > 1 && arr[1] instanceof Integer ? (Integer) arr[1] : 15;
                     int round = arr.length > 2 && arr[2] instanceof Integer ? (Integer) arr[2] : 1;
+                    int seq = arr.length > 3 && arr[3] instanceof Integer ? (Integer) arr[3] : -1;
                     final int fdur = dur;
                     final String frole = role;
                     final int fround = round;
-                    System.out.println("📨 [" + (user!=null?user.getUsername():"unknown") + "] Client received your_turn: role=" + frole + ", dur=" + fdur + ", round=" + fround);
+                    System.out.println("📨 [" + (user!=null?user.getUsername():"unknown") + "] Client received your_turn: role=" + frole + ", dur=" + fdur + ", round=" + fround + ", seq=" + seq);
                     Platform.runLater(() -> {
                         if (gameRoomController != null) {
-                            gameRoomController.promptYourTurn(fdur, frole, fround);
+                            if (seq >= 0) gameRoomController.promptYourTurn(fdur, frole, fround, seq);
+                            else gameRoomController.promptYourTurn(fdur, frole, fround);
                         }
                     });
                 } else if (content instanceof Integer) {
@@ -429,13 +431,15 @@ public class Client {
                     String role = arr.length > 0 && arr[0] instanceof String ? (String) arr[0] : "goalkeeper";
                     int dur = arr.length > 1 && arr[1] instanceof Integer ? (Integer) arr[1] : 15;
                     int round = arr.length > 2 && arr[2] instanceof Integer ? (Integer) arr[2] : 1;
+                    int seq = arr.length > 3 && arr[3] instanceof Integer ? (Integer) arr[3] : -1;
                     final int fdur = dur;
                     final String frole = role;
                     final int fround = round;
-                    System.out.println("📨 [" + (user!=null?user.getUsername():"unknown") + "] Client received goalkeeper_turn: role=" + frole + ", dur=" + fdur + ", round=" + fround);
+                    System.out.println("📨 [" + (user!=null?user.getUsername():"unknown") + "] Client received goalkeeper_turn: role=" + frole + ", dur=" + fdur + ", round=" + fround + ", seq=" + seq);
                     Platform.runLater(() -> {
                         if (gameRoomController != null) {
-                            gameRoomController.promptYourTurn(fdur, frole, fround);
+                            if (seq >= 0) gameRoomController.promptYourTurn(fdur, frole, fround, seq);
+                            else gameRoomController.promptYourTurn(fdur, frole, fround);
                         }
                     });
                 } else if (content instanceof Integer) {
@@ -453,13 +457,15 @@ public class Client {
                     String role = arr.length > 0 && arr[0] instanceof String ? (String) arr[0] : "opponent";
                     int dur = arr.length > 1 && arr[1] instanceof Integer ? (Integer) arr[1] : 15;
                     int round = arr.length > 2 && arr[2] instanceof Integer ? (Integer) arr[2] : 1;
+                    int seq = arr.length > 3 && arr[3] instanceof Integer ? (Integer) arr[3] : -1;
                     final int fdur = dur;
                     final String frole = role;
                     final int fround = round;
-                    System.out.println("📨 [" + (user!=null?user.getUsername():"unknown") + "] Client received opponent_turn: role=" + frole + ", dur=" + fdur + ", round=" + fround);
+                    System.out.println("📨 [" + (user!=null?user.getUsername():"unknown") + "] Client received opponent_turn: role=" + frole + ", dur=" + fdur + ", round=" + fround + ", seq=" + seq);
                     Platform.runLater(() -> {
                         if (gameRoomController != null) {
-                            gameRoomController.handleOpponentTurn(fdur, frole, fround);
+                            if (seq >= 0) gameRoomController.handleOpponentTurn(fdur, frole, fround, seq);
+                            else gameRoomController.handleOpponentTurn(fdur, frole, fround);
                         }
                     });
                 } else if (content instanceof Integer) {

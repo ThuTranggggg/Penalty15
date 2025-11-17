@@ -37,6 +37,8 @@ public class GameRoom {
     private String goalkeeperDirection;
     // Track which round has already been processed (to avoid double-processing timeouts)
     private int lastProcessedRound = 0;
+    // Monotonic sequence id for turn messages to help clients detect stale messages
+    private int turnSeq = 0;
 
     public GameRoom(ClientHandler player1, ClientHandler player2, DatabaseManager dbManager) throws SQLException {
         this.dbManager = dbManager;
@@ -79,17 +81,20 @@ public class GameRoom {
             // Xác định ai sút, ai bắt dựa trên vòng hiện tại
             boolean isPlayer1Shooter = (currentRound % 2 == 1);
             
-            // Gửi thông báo cho client (bao gồm role, timeout và round hiện tại)
+            // Advance turn sequence for the new turn and send notifications
+            turnSeq++;
+
+            // Gửi thông báo cho client (bao gồm role, timeout và round hiện tại, turnSeq)
             if (isPlayer1Shooter) {
                 // Player1 sút, Player2 bắt
-                player1Handler.sendMessage(new Message("your_turn", new Object[]{"shooter", TURN_TIMEOUT, currentRound}));
+                player1Handler.sendMessage(new Message("your_turn", new Object[]{"shooter", TURN_TIMEOUT, currentRound, turnSeq}));
                 // Inform observer that opponent is the shooter
-                player2Handler.sendMessage(new Message("opponent_turn", new Object[]{"shooter", TURN_TIMEOUT, currentRound}));
+                player2Handler.sendMessage(new Message("opponent_turn", new Object[]{"shooter", TURN_TIMEOUT, currentRound, turnSeq}));
             } else {
                 // Player2 sút, Player1 bắt
-                player2Handler.sendMessage(new Message("your_turn", new Object[]{"shooter", TURN_TIMEOUT, currentRound}));
+                player2Handler.sendMessage(new Message("your_turn", new Object[]{"shooter", TURN_TIMEOUT, currentRound, turnSeq}));
                 // Inform observer that opponent is the shooter
-                player1Handler.sendMessage(new Message("opponent_turn", new Object[]{"shooter", TURN_TIMEOUT, currentRound}));
+                player1Handler.sendMessage(new Message("opponent_turn", new Object[]{"shooter", TURN_TIMEOUT, currentRound, turnSeq}));
             }
 
             // Debug log: announce which player is shooter/goalkeeper for this round
@@ -149,8 +154,9 @@ public class GameRoom {
         ClientHandler shooterHandler = isPlayer1Shooter ? player1Handler : player2Handler;
 
         // Yêu cầu người bắt chọn hướng chặn
-        goalkeeperHandler.sendMessage(new Message("goalkeeper_turn", new Object[]{"goalkeeper", TURN_TIMEOUT, currentRound}));
-                shooterHandler.sendMessage(new Message("opponent_turn", new Object[]{"goalkeeper", TURN_TIMEOUT, currentRound}));
+        // include the turnSeq for this round so clients can ignore stale messages
+        goalkeeperHandler.sendMessage(new Message("goalkeeper_turn", new Object[]{"goalkeeper", TURN_TIMEOUT, currentRound, turnSeq}));
+            shooterHandler.sendMessage(new Message("opponent_turn", new Object[]{"goalkeeper", TURN_TIMEOUT, currentRound, turnSeq}));
 
                 System.out.println("📨 Sent goalkeeper_turn to " + (goalkeeperHandler.getUser() != null ? goalkeeperHandler.getUser().getUsername() : "unknown") +
                         " and opponent_turn(goalkeeper) to " + (shooterHandler.getUser() != null ? shooterHandler.getUser().getUsername() : "unknown") +
