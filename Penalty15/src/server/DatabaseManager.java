@@ -11,9 +11,9 @@ import javafx.util.Pair;
 
 public class DatabaseManager {
 
-    private static final String URL = "jdbc:mysql://localhost:3306/penalty15";
+    private static final String URL = "jdbc:mysql://localhost:3307/penaltyshootout";
     private static final String USER = "root"; // Thay bằng user MySQL của bạn
-    private static final String PASSWORD = "1235aBc@03"; // Thay bằng password MySQL của bạn
+    private static final String PASSWORD = "123456"; // Thay bằng password MySQL của bạn
 
     private Connection conn;
 
@@ -135,11 +135,17 @@ public class DatabaseManager {
     }
 
     // Cập nhật số trận thắng
-    public void updateUserWins(int userId) throws SQLException {
-        String query = "UPDATE users SET wins = wins + 1 WHERE id = ?";
-        PreparedStatement stmt = conn.prepareStatement(query);
-        stmt.setInt(1, userId);
-        stmt.executeUpdate();
+    public void updateUserWins(int userId) {
+        // NOTE: The schema may not contain a dedicated `wins` column. We derive
+        // wins from the `matches.winner_id` column instead. To avoid requiring a
+        // schema migration we make this method a no-op and rely on
+        // `getLeaderboard()` to compute wins on the fly from `matches`.
+        // Keep this method for compatibility so callers don't need to change.
+        try {
+            // no-op: wins derived from matches table
+        } catch (Exception e) {
+            System.err.println("⚠️ updateUserWins skipped: " + e.getMessage());
+        }
     }
 
     // Phương thức lưu chi tiết trận đấu
@@ -209,16 +215,22 @@ public class DatabaseManager {
     // Các phương thức khác như lấy lịch sử đấu, bảng xếp hạng, v.v.
     public List<User> getLeaderboard() throws SQLException {
         List<User> users = new ArrayList<>();
-        // Sắp xếp theo: 1. Tổng điểm (giảm dần), 2. Tổng trận thắng (giảm dần)
-        String query = "SELECT * FROM users ORDER BY points DESC, wins DESC";
-        Statement stmt = conn.createStatement();
-        ResultSet rs = stmt.executeQuery(query);
-        while (rs.next()) {
-            users.add(new User(
-                    rs.getInt("id"),
-                    rs.getString("username"),
-                    rs.getInt("points"),
-                    rs.getString("status")));
+        // Build leaderboard ordering by points desc, then wins desc where wins
+        // is computed from matches.winner_id. We don't require a 'wins' column
+        // in users table.
+        String query = "SELECT u.id, u.username, u.points, u.status, COALESCE(w.win_count,0) AS wins_count "
+                + "FROM users u LEFT JOIN (SELECT winner_id, COUNT(*) AS win_count FROM matches WHERE winner_id IS NOT NULL GROUP BY winner_id) w "
+                + "ON u.id = w.winner_id "
+                + "ORDER BY u.points DESC, wins_count DESC";
+
+        try (Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
+            while (rs.next()) {
+                users.add(new User(
+                        rs.getInt("id"),
+                        rs.getString("username"),
+                        rs.getInt("points"),
+                        rs.getString("status")));
+            }
         }
         return users;
     }

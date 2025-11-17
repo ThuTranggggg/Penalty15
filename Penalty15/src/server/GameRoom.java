@@ -27,12 +27,16 @@ public class GameRoom {
     // Biến lưu trữ Future của nhiệm vụ chờ
     private ScheduledFuture<?> shooterTimeoutTask;
     private ScheduledFuture<?> goalkeeperTimeoutTask;
+    // Scheduler cho timeout server-side
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
     // Biến để kiểm tra xem người chơi đã thực hiện hành động chưa
     private boolean shooterActionReceived = false;
     private boolean goalkeeperActionReceived = false;
 
     private String goalkeeperDirection;
+    // Track which round has already been processed (to avoid double-processing timeouts)
+    private int lastProcessedRound = 0;
 
     public GameRoom(ClientHandler player1, ClientHandler player2, DatabaseManager dbManager) throws SQLException {
         this.dbManager = dbManager;
@@ -64,29 +68,49 @@ public class GameRoom {
             e.printStackTrace();
         }
     }
-
+    
     private void requestNextMove() {
         try {
             if (checkEndGame()) {
                 endMatch();
                 return;
             }
-            
+
             // Xác định ai sút, ai bắt dựa trên vòng hiện tại
-            // Vòng lẻ (1,3,5,7,9): Player1 sút, Player2 bắt
-            // Vòng chẵn (2,4,6,8,10): Player2 sút, Player1 bắt
             boolean isPlayer1Shooter = (currentRound % 2 == 1);
             
+            // Gửi thông báo cho client (bao gồm role, timeout và round hiện tại)
             if (isPlayer1Shooter) {
                 // Player1 sút, Player2 bắt
-                player1Handler.sendMessage(new Message("your_turn", TURN_TIMEOUT));
-                player2Handler.sendMessage(new Message("opponent_turn", TURN_TIMEOUT));
+                player1Handler.sendMessage(new Message("your_turn", new Object[]{"shooter", TURN_TIMEOUT, currentRound}));
+                // Inform observer that opponent is the shooter
+                player2Handler.sendMessage(new Message("opponent_turn", new Object[]{"shooter", TURN_TIMEOUT, currentRound}));
             } else {
                 // Player2 sút, Player1 bắt
-                player2Handler.sendMessage(new Message("your_turn", TURN_TIMEOUT));
-                player1Handler.sendMessage(new Message("opponent_turn", TURN_TIMEOUT));
+                player2Handler.sendMessage(new Message("your_turn", new Object[]{"shooter", TURN_TIMEOUT, currentRound}));
+                // Inform observer that opponent is the shooter
+                player1Handler.sendMessage(new Message("opponent_turn", new Object[]{"shooter", TURN_TIMEOUT, currentRound}));
             }
-            
+
+            // Debug log: announce which player is shooter/goalkeeper for this round
+            System.out.println("📨 requestNextMove: round=" + currentRound + ", shooter=" +
+                    (isPlayer1Shooter ? (player1Handler.getUser()!=null?player1Handler.getUser().getUsername():"p1") : (player2Handler.getUser()!=null?player2Handler.getUser().getUsername():"p2")) +
+                    ", goalkeeper=" +
+                    (isPlayer1Shooter ? (player2Handler.getUser()!=null?player2Handler.getUser().getUsername():"p2") : (player1Handler.getUser()!=null?player1Handler.getUser().getUsername():"p1")));
+
+            // Cancel any previous scheduled tasks (Đảm bảo dọn dẹp triệt để)
+            if (shooterTimeoutTask != null && !shooterTimeoutTask.isDone()) shooterTimeoutTask.cancel(true);
+            if (goalkeeperTimeoutTask != null && !goalkeeperTimeoutTask.isDone()) goalkeeperTimeoutTask.cancel(true);
+
+            // Schedule server-side shooter timeout enforcement
+            shooterTimeoutTask = scheduler.schedule(() -> {
+                try {
+                    startShooterTimeout();
+                } catch (Exception e) {
+                    System.err.println("❌ Lỗi khi thực thi shooter timeout scheduler: " + e.getMessage());
+                }
+            }, TURN_TIMEOUT, TimeUnit.SECONDS);
+
             shooterActionReceived = false;
             shooterDirection = null;
             goalkeeperDirection = null;
@@ -99,93 +123,138 @@ public class GameRoom {
     // Xử lý hướng sút từ người sút
     public synchronized void handleShot(String shooterDirection, ClientHandler shooter)
             throws SQLException, IOException {
+        // Guard: ignore late actions for processed rounds
+        if (lastProcessedRound >= currentRound) {
+            System.out.println("⚠️ handleShot: round " + currentRound + " already processed, ignoring late shot.");
+            return;
+        }
+        
+        System.out.println("📨 handleShot: received shot from " + (shooter!=null && shooter.getUser()!=null?shooter.getUser().getUsername():"unknown") +
+            ", direction=" + shooterDirection + ", serverRound=" + currentRound);
         this.shooterDirection = shooterDirection;
         shooterActionReceived = true;
+
+        // Hủy Timer của Shooter (Đã nhận action)
         if (shooterTimeoutTask != null && !shooterTimeoutTask.isDone()) {
             shooterTimeoutTask.cancel(true);
         }
-        
+        // Hủy Goalkeeper Timer (cho an toàn)
+        if (goalkeeperTimeoutTask != null && !goalkeeperTimeoutTask.isDone()) {
+            goalkeeperTimeoutTask.cancel(true);
+        }
+
         // Xác định ai là người bắt trong vòng này
         boolean isPlayer1Shooter = (currentRound % 2 == 1);
         ClientHandler goalkeeperHandler = isPlayer1Shooter ? player2Handler : player1Handler;
         ClientHandler shooterHandler = isPlayer1Shooter ? player1Handler : player2Handler;
-        
+
         // Yêu cầu người bắt chọn hướng chặn
-        goalkeeperHandler.sendMessage(new Message("goalkeeper_turn", TURN_TIMEOUT));
-        shooterHandler.sendMessage(new Message("opponent_turn", TURN_TIMEOUT));
-        
+        goalkeeperHandler.sendMessage(new Message("goalkeeper_turn", new Object[]{"goalkeeper", TURN_TIMEOUT, currentRound}));
+                shooterHandler.sendMessage(new Message("opponent_turn", new Object[]{"goalkeeper", TURN_TIMEOUT, currentRound}));
+
+                System.out.println("📨 Sent goalkeeper_turn to " + (goalkeeperHandler.getUser() != null ? goalkeeperHandler.getUser().getUsername() : "unknown") +
+                        " and opponent_turn(goalkeeper) to " + (shooterHandler.getUser() != null ? shooterHandler.getUser().getUsername() : "unknown") +
+                        " for round " + currentRound);
         goalkeeperActionReceived = false;
+        // Schedule goalkeeper timeout enforcement on server side
+        if (goalkeeperTimeoutTask != null && !goalkeeperTimeoutTask.isDone()) goalkeeperTimeoutTask.cancel(true);
+        goalkeeperTimeoutTask = scheduler.schedule(() -> {
+            try {
+                startGoalkeeperTimeout();
+            } catch (Exception e) {
+                System.err.println("❌ Lỗi khi thực thi goalkeeper timeout scheduler: " + e.getMessage());
+            }
+        }, TURN_TIMEOUT, TimeUnit.SECONDS);
     }
 
     // Xử lý hướng chặn từ người bắt
     public synchronized void handleGoalkeeper(String goalkeeperDirection, ClientHandler goalkeeper)
             throws SQLException, IOException {
-        if (this.shooterDirection == null) {
-            player1Handler.sendMessage(new Message("error", "Hướng sút chưa được thiết lập."));
-            player2Handler.sendMessage(new Message("error", "Hướng sút chưa được thiết lập."));
+        // Guard: ignore late actions for processed rounds
+        if (lastProcessedRound >= currentRound) {
+            System.out.println("⚠️ handleGoalkeeper: round " + currentRound + " already processed, ignoring late goalkeeper action.");
             return;
         }
+        
+        // Kiểm tra shooterDirection đã được đặt chưa
+        if (this.shooterDirection == null) {
+            if (player1Handler != null) player1Handler.sendMessage(new Message("error", "Hướng sút chưa được thiết lập."));
+            if (player2Handler != null) player2Handler.sendMessage(new Message("error", "Hướng sút chưa được thiết lập."));
+            return;
+        }
+
         this.goalkeeperDirection = goalkeeperDirection;
         goalkeeperActionReceived = true;
 
+        // Hủy các timeout còn tồn tại
         if (goalkeeperTimeoutTask != null && !goalkeeperTimeoutTask.isDone()) {
             goalkeeperTimeoutTask.cancel(true);
         }
+        if (shooterTimeoutTask != null && !shooterTimeoutTask.isDone()) shooterTimeoutTask.cancel(true);
 
         // Xác định vai trò trong vòng này
         boolean isPlayer1Shooter = (currentRound % 2 == 1);
         ClientHandler shooterHandler = isPlayer1Shooter ? player1Handler : player2Handler;
         ClientHandler goalkeeperHandler = isPlayer1Shooter ? player2Handler : player1Handler;
-        
+
         // Xử lý kết quả
-        // LOGIC ĐÚNG: Nếu hướng SÚT ≠ hướng BẮT → Người SÚT ghi bàn (thắng)
-        //            Nếu hướng SÚT = hướng BẮT → Người BẮT cản được (người sút 0 điểm)
         boolean goal = !shooterDirection.equalsIgnoreCase(goalkeeperDirection);
-        
         if (goal) {
-            // Người sút thắng → Cộng điểm cho người sút
             if (isPlayer1Shooter) {
-                player1Score++;  // Player1 đang sút → Player1 ghi bàn
+                player1Score++;
             } else {
-                player2Score++;  // Player2 đang sút → Player2 ghi bàn
+                player2Score++;
             }
         }
-        // Nếu không goal (trùng hướng) → Không ai được điểm
 
+        // Gửi kết quả vòng cho cả hai
         String kick_result = (goal ? "win" : "lose") + "-" + shooterDirection + "-" + goalkeeperDirection;
-        shooterHandler.sendMessage(new Message("kick_result", kick_result));
-        goalkeeperHandler.sendMessage(new Message("kick_result", kick_result));
+        try {
+            shooterHandler.sendMessage(new Message("kick_result", kick_result));
+            goalkeeperHandler.sendMessage(new Message("kick_result", kick_result));
+        } catch (Exception e) {
+            System.err.println("❌ Lỗi gửi kick_result: " + e.getMessage());
+        }
 
         // Lưu chi tiết trận đấu vào database
-        dbManager.saveMatchDetails(matchId, currentRound,
-                shooterHandler.getUser().getId(),
-                goalkeeperHandler.getUser().getId(),
-                shooterDirection, goalkeeperDirection, goal ? "win" : "lose");
+        try {
+            dbManager.saveMatchDetails(matchId, currentRound,
+                    shooterHandler.getUser().getId(),
+                    goalkeeperHandler.getUser().getId(),
+                    shooterDirection, goalkeeperDirection, goal ? "win" : "lose");
+        } catch (SQLException se) {
+            System.err.println("❌ Lỗi lưu chi tiết trận đấu: " + se.getMessage());
+        }
 
-        // Gửi tỷ số cập nhật cho từng người chơi
-        // Player1 nhận điểm của mình trước
+        // Mark this round processed to avoid races with timeouts
+        lastProcessedRound = currentRound;
+
+        // Tăng vòng ngay lập tức
+        currentRound++;
+
+        // Gửi cập nhật điểm (và vòng mới)
         Message scoreMessageToPlayer1 = new Message("update_score",
                 new int[] { player1Score, player2Score, currentRound });
         Message scoreMessageToPlayer2 = new Message("update_score",
                 new int[] { player2Score, player1Score, currentRound });
 
-        player1Handler.sendMessage(scoreMessageToPlayer1);
-        player2Handler.sendMessage(scoreMessageToPlayer2);
+        try {
+            System.out.println("📨 Sending update_score for round=" + currentRound + " scores=" + player1Score + "-" + player2Score);
+            player1Handler.sendMessage(scoreMessageToPlayer1);
+            player2Handler.sendMessage(scoreMessageToPlayer2);
+        } catch (Exception e) {
+            System.err.println("❌ Lỗi gửi update_score sau goalkeeper action: " + e.getMessage());
+        }
 
-        // Tăng vòng
-        currentRound++;
-        System.out.println("📊 Sau khi tăng vòng: currentRound = " + currentRound + ", MAX_ROUNDS = " + MAX_ROUNDS);
-        
+        // Reset state cho vòng tiếp theo
+        shooterDirection = null;
+        goalkeeperDirection = null;
+        shooterActionReceived = false;
+        goalkeeperActionReceived = false;
+
         if (checkEndGame()) {
-            System.out.println("🏁 Trận đấu kết thúc! Gọi determineWinner()...");
             determineWinner();
         } else {
-            System.out.println("▶️ Chuyển sang vòng tiếp theo...");
-            // Chuyển sang vòng tiếp theo
-            shooterDirection = null;
-            goalkeeperDirection = null;
-            shooterActionReceived = false;
-            goalkeeperActionReceived = false;
             requestNextMove();
         }
     }
@@ -341,15 +410,24 @@ public class GameRoom {
         player1WantsRematch = null;
         player2WantsRematch = null;
 
-        // KHÔNG swap vai trò - giữ nguyên player1 và player2
-        // Mỗi vòng sẽ tự động đổi vai trò dựa trên currentRound
-
         // Create a new match in the database
         matchId = dbManager.saveMatch(player1Handler.getUser().getId(), player2Handler.getUser().getId(), 0);
     }
 
     // Đảm bảo rằng phương thức endMatch() tồn tại và được định nghĩa chính xác
     private void endMatch() throws SQLException, IOException {
+        // Dọn dẹp timer trước khi kết thúc
+        try {
+            if (shooterTimeoutTask != null && !shooterTimeoutTask.isDone()) shooterTimeoutTask.cancel(true);
+        } catch (Exception e) {
+            System.err.println("❌ Lỗi khi hủy shooterTimeoutTask trong endMatch: " + e.getMessage());
+        }
+        try {
+            if (goalkeeperTimeoutTask != null && !goalkeeperTimeoutTask.isDone()) goalkeeperTimeoutTask.cancel(true);
+        } catch (Exception e) {
+            System.err.println("❌ Lỗi khi hủy goalkeeperTimeoutTask trong endMatch: " + e.getMessage());
+        }
+        
         determineWinner();
 
         // Reset in-game status for both players after match
@@ -365,6 +443,17 @@ public class GameRoom {
         System.out.println("🔌 handlePlayerDisconnect được gọi cho: " + 
             (disconnectedPlayer != null && disconnectedPlayer.getUser() != null ? 
                 disconnectedPlayer.getUser().getUsername() : "Unknown"));
+        // Cancel any pending scheduled timeout tasks to avoid orphaned timeouts
+        try {
+            if (shooterTimeoutTask != null && !shooterTimeoutTask.isDone()) shooterTimeoutTask.cancel(true);
+        } catch (Exception e) {
+            System.err.println("❌ Lỗi khi hủy shooterTimeoutTask: " + e.getMessage());
+        }
+        try {
+            if (goalkeeperTimeoutTask != null && !goalkeeperTimeoutTask.isDone()) goalkeeperTimeoutTask.cancel(true);
+        } catch (Exception e) {
+            System.err.println("❌ Lỗi khi hủy goalkeeperTimeoutTask: " + e.getMessage());
+        }
         
         String resultMessageToWinner = "Đối thủ đã ngắt kết nối. Bạn thắng trận đấu!";
         String endReason = "player_disconnect";
@@ -454,6 +543,17 @@ public class GameRoom {
         System.out.println("🚪 handlePlayerQuit được gọi cho: " + 
             (quittingPlayer != null && quittingPlayer.getUser() != null ? 
                 quittingPlayer.getUser().getUsername() : "Unknown"));
+        // Cancel any pending scheduled timeout tasks to avoid orphaned timeouts
+        try {
+            if (shooterTimeoutTask != null && !shooterTimeoutTask.isDone()) shooterTimeoutTask.cancel(true);
+        } catch (Exception e) {
+            System.err.println("❌ Lỗi khi hủy shooterTimeoutTask: " + e.getMessage());
+        }
+        try {
+            if (goalkeeperTimeoutTask != null && !goalkeeperTimeoutTask.isDone()) goalkeeperTimeoutTask.cancel(true);
+        } catch (Exception e) {
+            System.err.println("❌ Lỗi khi hủy goalkeeperTimeoutTask: " + e.getMessage());
+        }
         
         String resultMessageToLoser = "Bạn đã thoát. Bạn thua trận đấu!";
         String resultMessageToWinner = "Đối thủ đã thoát. Bạn thắng trận đấu!";
@@ -486,6 +586,7 @@ public class GameRoom {
             System.out.println("✅ Đã cập nhật database");
         } catch (SQLException e) {
             System.err.println("❌ Lỗi cập nhật database: " + e.getMessage());
+            e.printStackTrace();
         }
 
         // Cập nhật status cả hai người chơi: "ingame" -> "online"
@@ -528,6 +629,7 @@ public class GameRoom {
             System.out.println("✅ Đã gửi match_end cho người thắng");
         } catch (Exception e) {
             System.err.println("❌ Lỗi gửi message cho người thắng: " + e.getMessage());
+            e.printStackTrace();
         }
 
         // Đặt lại trạng thái game room
@@ -546,7 +648,8 @@ public class GameRoom {
         System.out.println("🏁 handlePlayerQuit hoàn tất");
     }
 
-    public void startShooterTimeout() {
+    // Xử lý Shooter Timeout
+    public synchronized void startShooterTimeout() {
         try {
             System.out.println("⏱️ startShooterTimeout - Round: " + currentRound);
             
@@ -556,29 +659,203 @@ public class GameRoom {
                 return;
             }
             
+            // Guard: if this round was already processed, skip
+            if (lastProcessedRound >= currentRound) {
+                System.out.println("⚠️ startShooterTimeout: round " + currentRound + " already processed, skipping");
+                return;
+            }
+
             if (!shooterActionReceived) {
-                // Xác định ai là shooter trong vòng này
+                System.out.println("⏱️ Shooter timeout - người sút không phản hồi, đối thủ được +1 điểm. (round=" + currentRound + ")");
+
+                // Mark and cancel any pending tasks
+                shooterActionReceived = true;
+                lastProcessedRound = currentRound;
+
+                // HỦY TẤT CẢ TÁC VỤ ĐANG CHỜ
+                if (goalkeeperTimeoutTask != null && !goalkeeperTimeoutTask.isDone()) {
+                    goalkeeperTimeoutTask.cancel(true);
+                    System.out.println("✅ Đã hủy goalkeeperTimeoutTask sau Shooter Timeout.");
+                }
+                if (shooterTimeoutTask != null && !shooterTimeoutTask.isDone()) {
+                    shooterTimeoutTask.cancel(true);
+                }
+
+                // Xác định ai là shooter/goalkeeper
                 boolean isPlayer1Shooter = (currentRound % 2 == 1);
                 ClientHandler shooterHandler = isPlayer1Shooter ? player1Handler : player2Handler;
                 ClientHandler goalkeeperHandler = isPlayer1Shooter ? player2Handler : player1Handler;
-                
-                System.out.println("⏱️ Shooter timeout - tự động chọn vị trí 5");
-                
-                // Người sút không thực hiện hành động trong thời gian quy định
-                shooterDirection = "5"; // Vị trí 5 (center)
-                shooterActionReceived = true;
-                shooterHandler.sendMessage(
-                        new Message("timeout", "Hết giờ! \nHệ thống tự chọn vị trí 5 (giữa) cho bạn."));
-                goalkeeperHandler.sendMessage(new Message("opponent_timeout",
-                        "Hết giờ! \nHệ thống tự chọn vị trí 5 (giữa) cho đối thủ."));
-                // Yêu cầu người bắt chọn hướng chặn
-                handleShot(shooterDirection, shooterHandler);
 
-                // Bắt đầu đếm thời gian chờ cho người bắt
+                // Người sút không thực hiện -> đối thủ được +1 điểm
+                if (isPlayer1Shooter) {
+                    player2Score++;
+                } else {
+                    player1Score++;
+                }
+
+                // Thông báo timeout và kết quả vòng cho cả hai
+                try {
+                    shooterHandler.sendMessage(new Message("timeout", "Hết giờ! Bạn đã không chọn hướng. Đối thủ được +1 điểm."));
+                    goalkeeperHandler.sendMessage(new Message("opponent_timeout", "Đối thủ hết giờ. Bạn được +1 điểm."));
+                } catch (Exception e) {
+                    System.err.println("❌ Lỗi gửi thông báo timeout: " + e.getMessage());
+                }
+
+                // Lưu chi tiết trận đấu (ghi chú timeout)
+                try {
+                    dbManager.saveMatchDetails(matchId, currentRound,
+                            shooterHandler.getUser().getId(),
+                            goalkeeperHandler.getUser().getId(),
+                            "timeout", "timeout", "timeout");
+                } catch (SQLException se) {
+                    System.err.println("❌ Lỗi lưu chi tiết trận đấu sau shooter timeout: " + se.getMessage());
+                }
+
+                // Persist per-round point: opponent gets +1 point permanently
+                try {
+                    int winnerId = goalkeeperHandler.getUser().getId();
+                    dbManager.updateUserPoints(winnerId, 1);
+                    System.out.println("✅ Đã cập nhật database: +1 điểm cho user id=" + winnerId + " do timeout (shooter)");
+                } catch (SQLException se) {
+                    System.err.println("❌ Lỗi cập nhật điểm sau timeout shooter: " + se.getMessage());
+                }
+
+                // Debug: log scores before sending update
+                System.out.println("📨 ShooterTimeout awarding point. scores now=" + player1Score + "-" + player2Score + ", currentRound(before increment)=" + currentRound);
+
+                // Tăng vòng ngay lập tức
+                currentRound++;
+
+                // Gửi cập nhật điểm (và vòng mới)
+                Message scoreMessageToPlayer1 = new Message("update_score",
+                        new int[] { player1Score, player2Score, currentRound });
+                Message scoreMessageToPlayer2 = new Message("update_score",
+                        new int[] { player2Score, player1Score, currentRound });
+
+                try {
+                    player1Handler.sendMessage(scoreMessageToPlayer1);
+                    player2Handler.sendMessage(scoreMessageToPlayer2);
+                } catch (Exception e) {
+                    System.err.println("❌ Lỗi gửi update_score sau shooter timeout: " + e.getMessage());
+                }
+
+                // Reset state
+                shooterDirection = null;
+                goalkeeperDirection = null;
+                shooterActionReceived = false;
                 goalkeeperActionReceived = false;
+
+                if (checkEndGame()) {
+                    determineWinner();
+                } else {
+                    requestNextMove();
+                }
             }
         } catch (Exception e) {
             System.err.println("❌ Lỗi trong startShooterTimeout: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    // Xử lý Goalkeeper Timeout
+    public synchronized void startGoalkeeperTimeout() {
+        try {
+            System.out.println("⏱️ startGoalkeeperTimeout - Round: " + currentRound);
+
+            // Guard: avoid double-processing the same round
+            if (lastProcessedRound >= currentRound) {
+                System.out.println("⚠️ startGoalkeeperTimeout: round " + currentRound + " already processed, skipping");
+                return;
+            }
+
+            if (!goalkeeperActionReceived) {
+                System.out.println("⏱️ Goalkeeper timeout - người bắt không phản hồi, người sút được +1 điểm ngay. (round=" + currentRound + ")");
+
+                // Mark and cancel pending tasks
+                goalkeeperActionReceived = true;
+                lastProcessedRound = currentRound;
+
+                // HỦY TẤT CẢ TÁC VỤ ĐANG CHỜ
+                if (shooterTimeoutTask != null && !shooterTimeoutTask.isDone()) {
+                    shooterTimeoutTask.cancel(true);
+                    System.out.println("✅ Đã hủy shooterTimeoutTask sau Goalkeeper Timeout.");
+                }
+                if (goalkeeperTimeoutTask != null && !goalkeeperTimeoutTask.isDone()) {
+                    goalkeeperTimeoutTask.cancel(true);
+                }
+
+                // Xác định ai là shooter và người được +1
+                boolean isPlayer1Shooter = (currentRound % 2 == 1);
+                ClientHandler shooterHandler = isPlayer1Shooter ? player1Handler : player2Handler;
+                ClientHandler goalkeeperHandler = isPlayer1Shooter ? player2Handler : player1Handler;
+
+                // Người bắt không phản hồi -> người sút được +1
+                if (isPlayer1Shooter) {
+                    player1Score++;
+                } else {
+                    player2Score++;
+                }
+
+                // Thông báo timeout và kết quả vòng cho cả hai
+                try {
+                    shooterHandler.sendMessage(new Message("opponent_timeout", "Đối thủ hết giờ. Bạn được +1 điểm."));
+                    goalkeeperHandler.sendMessage(new Message("timeout", "Hết giờ! Bạn đã không chọn hướng. Đối thủ được +1 điểm."));
+                } catch (Exception e) {
+                    System.err.println("❌ Lỗi gửi thông báo timeout (goalkeeper): " + e.getMessage());
+                }
+
+                // Lưu chi tiết trận đấu: ghi chú timeout
+                try {
+                    dbManager.saveMatchDetails(matchId, currentRound,
+                            shooterHandler.getUser().getId(),
+                            goalkeeperHandler.getUser().getId(),
+                            "timeout", "timeout", "timeout");
+                } catch (SQLException se) {
+                    System.err.println("❌ Lỗi lưu chi tiết trận đấu sau goalkeeper timeout: " + se.getMessage());
+                }
+
+                // Persist per-round point: shooter gets +1 point permanently
+                try {
+                    int winnerId = shooterHandler.getUser().getId();
+                    dbManager.updateUserPoints(winnerId, 1);
+                    System.out.println("✅ Đã cập nhật database: +1 điểm cho user id=" + winnerId + " do timeout (goalkeeper)");
+                } catch (SQLException se) {
+                    System.err.println("❌ Lỗi cập nhật điểm sau goalkeeper timeout: " + se.getMessage());
+                }
+
+                // Debug: log scores before sending update
+                System.out.println("📨 GoalkeeperTimeout awarding point. scores now=" + player1Score + "-" + player2Score + ", currentRound(before increment)=" + currentRound);
+
+                // Tăng vòng ngay lập tức
+                currentRound++;
+
+                // Gửi cập nhật điểm (và vòng mới)
+                Message scoreMessageToPlayer1 = new Message("update_score",
+                        new int[] { player1Score, player2Score, currentRound });
+                Message scoreMessageToPlayer2 = new Message("update_score",
+                        new int[] { player2Score, player1Score, currentRound });
+
+                try {
+                    player1Handler.sendMessage(scoreMessageToPlayer1);
+                    player2Handler.sendMessage(scoreMessageToPlayer2);
+                } catch (Exception e) {
+                    System.err.println("❌ Lỗi gửi update_score sau goalkeeper timeout: " + e.getMessage());
+                }
+
+                // Reset state
+                shooterDirection = null;
+                goalkeeperDirection = null;
+                shooterActionReceived = false;
+                goalkeeperActionReceived = false;
+
+                if (checkEndGame()) {
+                    determineWinner();
+                } else {
+                    requestNextMove();
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("❌ Lỗi trong startGoalkeeperTimeout: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -590,33 +867,8 @@ public class GameRoom {
         return currentRound > MAX_ROUNDS;
     }
 
-    public void startGoalkeeperTimeout() {
-        try {
-            System.out.println("⏱️ startGoalkeeperTimeout - Round: " + currentRound);
-            
-            if (!goalkeeperActionReceived) {
-                // Xác định ai là goalkeeper trong vòng này
-                boolean isPlayer1Shooter = (currentRound % 2 == 1);
-                ClientHandler shooterHandler = isPlayer1Shooter ? player1Handler : player2Handler;
-                ClientHandler goalkeeperHandler = isPlayer1Shooter ? player2Handler : player1Handler;
-                
-                System.out.println("⏱️ Goalkeeper timeout - tự động chọn vị trí 5");
-                
-                // Người bắt không thực hiện hành động trong thời gian quy định
-                goalkeeperDirection = "5"; // Vị trí 5 (center)
-                goalkeeperActionReceived = true;
-
-                goalkeeperHandler.sendMessage(
-                        new Message("timeout", "Hết giờ! \nHệ thống tự chọn vị trí 5 (giữa) cho bạn."));
-                shooterHandler.sendMessage(new Message("opponent_timeout",
-                        "Hết giờ! \nHệ thống tự chọn vị trí 5 (giữa) cho đối thủ."));
-
-                // Tiến hành xử lý kết quả
-                handleGoalkeeper(goalkeeperDirection, goalkeeperHandler);
-            }
-        } catch (Exception e) {
-            System.err.println("❌ Lỗi trong startGoalkeeperTimeout: " + e.getMessage());
-            e.printStackTrace();
-        }
+    // Thread-safe getter for currentRound so other classes can validate client-sent round IDs
+    public synchronized int getCurrentRound() {
+        return currentRound;
     }
 }

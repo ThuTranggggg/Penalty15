@@ -23,6 +23,7 @@ import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.net.URL;
 import java.util.List;
+import java.util.Arrays;
 
 public class Client {
 
@@ -160,7 +161,19 @@ public class Client {
     }
 
     private void handleMessage(Message message) {
-        System.out.println("Received message: " + message.getType() + " - " + message.getContent());
+        // Pretty-print common content shapes to avoid Java's default array toString like [I@1a2b3c
+        Object contentObj = message.getContent();
+        String contentStr;
+        if (contentObj instanceof int[]) {
+            contentStr = Arrays.toString((int[]) contentObj);
+        } else if (contentObj instanceof Object[]) {
+            contentStr = Arrays.toString((Object[]) contentObj);
+        } else if (contentObj instanceof java.util.Collection) {
+            contentStr = contentObj.toString();
+        } else {
+            contentStr = String.valueOf(contentObj);
+        }
+        System.out.println("Received message: " + message.getType() + " - " + contentStr);
         if (message == null) {
             return;
         }
@@ -385,31 +398,78 @@ public class Client {
                 });
                 break;
 
-            case "your_turn":
-                int duration = (int) message.getContent();
-                Platform.runLater(() -> {
-                    if (gameRoomController != null) {
-                        gameRoomController.promptYourTurn(duration);
-                    }
-                });
-                break;
-            case "goalkeeper_turn":
-                int duration1 = (int) message.getContent();
-                Platform.runLater(() -> {
-                    if (gameRoomController != null) {
-                        gameRoomController.promptGoalkeeperTurn(duration1);
-                    }
-                });
-                break;
-
-            case "opponent_turn":
-                int duration2 = (int) message.getContent();
-                Platform.runLater(() -> {
-                    if (gameRoomController != null) {
-                        gameRoomController.handleOpponentTurn(duration2);
-                    }
-                });
-                break;
+            case "your_turn": {
+                Object content = message.getContent();
+                if (content instanceof Object[]) {
+                    Object[] arr = (Object[]) content;
+                    String role = arr.length > 0 && arr[0] instanceof String ? (String) arr[0] : "shooter";
+                    int dur = arr.length > 1 && arr[1] instanceof Integer ? (Integer) arr[1] : 15;
+                    int round = arr.length > 2 && arr[2] instanceof Integer ? (Integer) arr[2] : 1;
+                    final int fdur = dur;
+                    final String frole = role;
+                    final int fround = round;
+                    System.out.println("📨 [" + (user!=null?user.getUsername():"unknown") + "] Client received your_turn: role=" + frole + ", dur=" + fdur + ", round=" + fround);
+                    Platform.runLater(() -> {
+                        if (gameRoomController != null) {
+                            gameRoomController.promptYourTurn(fdur, frole, fround);
+                        }
+                    });
+                } else if (content instanceof Integer) {
+                    int dur = (Integer) content;
+                    Platform.runLater(() -> {
+                        if (gameRoomController != null) gameRoomController.promptYourTurn(dur);
+                    });
+                }
+            }
+            break;
+            case "goalkeeper_turn": {
+                Object content = message.getContent();
+                if (content instanceof Object[]) {
+                    Object[] arr = (Object[]) content;
+                    String role = arr.length > 0 && arr[0] instanceof String ? (String) arr[0] : "goalkeeper";
+                    int dur = arr.length > 1 && arr[1] instanceof Integer ? (Integer) arr[1] : 15;
+                    int round = arr.length > 2 && arr[2] instanceof Integer ? (Integer) arr[2] : 1;
+                    final int fdur = dur;
+                    final String frole = role;
+                    final int fround = round;
+                    System.out.println("📨 [" + (user!=null?user.getUsername():"unknown") + "] Client received goalkeeper_turn: role=" + frole + ", dur=" + fdur + ", round=" + fround);
+                    Platform.runLater(() -> {
+                        if (gameRoomController != null) {
+                            gameRoomController.promptYourTurn(fdur, frole, fround);
+                        }
+                    });
+                } else if (content instanceof Integer) {
+                    int dur = (Integer) content;
+                    Platform.runLater(() -> {
+                        if (gameRoomController != null) gameRoomController.promptGoalkeeperTurn(dur);
+                    });
+                }
+            }
+            break;
+            case "opponent_turn": {
+                Object content = message.getContent();
+                if (content instanceof Object[]) {
+                    Object[] arr = (Object[]) content;
+                    String role = arr.length > 0 && arr[0] instanceof String ? (String) arr[0] : "opponent";
+                    int dur = arr.length > 1 && arr[1] instanceof Integer ? (Integer) arr[1] : 15;
+                    int round = arr.length > 2 && arr[2] instanceof Integer ? (Integer) arr[2] : 1;
+                    final int fdur = dur;
+                    final String frole = role;
+                    final int fround = round;
+                    System.out.println("📨 [" + (user!=null?user.getUsername():"unknown") + "] Client received opponent_turn: role=" + frole + ", dur=" + fdur + ", round=" + fround);
+                    Platform.runLater(() -> {
+                        if (gameRoomController != null) {
+                            gameRoomController.handleOpponentTurn(fdur, frole, fround);
+                        }
+                    });
+                } else if (content instanceof Integer) {
+                    int dur = (Integer) content;
+                    Platform.runLater(() -> {
+                        if (gameRoomController != null) gameRoomController.handleOpponentTurn(dur);
+                    });
+                }
+            }
+            break;
                 
             case "timeout":
                 Platform.runLater(() -> {
@@ -427,6 +487,13 @@ public class Client {
                 break;
             
             case "force_logout":
+                // Send acknowledgement back to server so it can close the old socket gracefully
+                try {
+                    sendMessage(new Message("logout_ack", null));
+                } catch (IOException e) {
+                    // ignore if we can't send ack
+                    e.printStackTrace();
+                }
                 Platform.runLater(() -> {
                     showErrorAlert((String) message.getContent());
                     try {
@@ -503,7 +570,32 @@ public class Client {
                 primaryStage.setMaximized(true);
             });
             
-            sendMessage(new Message("get_users", null));
+            try {
+                // Ensure we have a live connection before requesting data for Main UI.
+                if (socket == null || socket.isClosed() || out == null) {
+                    System.out.println("Socket not connected - attempting to reconnect before loading MainUI...");
+                    startConnection("localhost", 12345);
+                }
+
+                sendMessage(new Message("get_users", null));
+            } catch (IOException e) {
+                // Có thể xảy ra khi server đã đóng kết nối bất ngờ.
+                e.printStackTrace();
+                showErrorAlert("Kết nối tới server đã bị gián đoạn khi lấy danh sách người dùng.");
+                // Đóng kết nối cục bộ và về lại màn hình đăng nhập để tái kết nối
+                try {
+                    closeConnection();
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                }
+                Platform.runLater(() -> {
+                    try {
+                        showLoginUI();
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
+                });
+            }
         } catch (IOException e) {
             e.printStackTrace();
             showErrorAlert("Không thể tải giao diện chính.");
